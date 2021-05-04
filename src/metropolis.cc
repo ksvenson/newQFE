@@ -36,10 +36,10 @@ double QfeMetropolis::UpdateSite(int s) {
   double delta_action = 0.0;
 
   // kinetic contribution to the action
-  QfeSite site = lattice->sites[s];
-  for (int n = 0; n < site.nn; n++) {
-    double link_wt = lattice->links[site.links[n]].wt;
-    delta_action -= lattice->phi[site.neighbors[n]] * delta_phi * link_wt;
+  QfeSite* site = &lattice->sites[s];
+  for (int n = 0; n < site->nn; n++) {
+    double link_wt = lattice->links[site->links[n]].wt;
+    delta_action -= lattice->phi[site->neighbors[n]] * delta_phi * link_wt;
     delta_action += 0.5 * delta_phi2 * link_wt;
   }
 

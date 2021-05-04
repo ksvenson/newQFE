@@ -34,10 +34,10 @@ int main(int argc, char* argv[]) {
   int n_update = 20000;
   for (int i = 0; i < n_update; i++) {
     metropolis.Update();
-    double demon = overrelax.GetDemon();
+    double demon = overrelax.demon;
     double S_before = lattice.Action() + demon / double(lattice.n_sites());
     double accept_rate = overrelax.Update();
-    demon = overrelax.GetDemon();
+    demon = overrelax.demon;
     double S_after = lattice.Action() + demon / double(lattice.n_sites());
     double delta_S = S_after - S_before;
     demon_sum += demon;

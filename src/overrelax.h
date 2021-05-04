@@ -6,15 +6,11 @@ class QfeLattice;
 
 class QfeOverrelax {
 
- public:
+public:
   void Init(QfeLattice* lattice);
   double Update();
-  inline double GetDemon() { return demon; }
-
- protected:
   int UpdateSite(int s);
 
- private:
-   QfeLattice* lattice;
-   double demon;
+  QfeLattice* lattice;
+  double demon;
 };

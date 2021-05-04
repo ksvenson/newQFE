@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
     double accept_metropolis = metropolis.Update();
     double accept_overrelax = overrelax.Update();
 
-    double mag = lattice.GetMag();
+    double mag = lattice.mag;
     double mag2 = mag * mag;
     double mag4 = mag2 * mag2;
     mag_sum += mag;
@@ -50,9 +50,9 @@ int main(int argc, char* argv[]) {
     mag8_sum += mag4 * mag4;
     cluster_sum += cluster_size;
     printf("%06d %.12f %.12f %.4f %.4f %.12f %d\n", i, \
-        lattice.Action(), lattice.GetMag(), \
+        lattice.Action(), lattice.mag, \
         accept_metropolis, \
-        accept_overrelax, overrelax.GetDemon(), \
+        accept_overrelax, overrelax.demon, \
         cluster_size);
   }
 

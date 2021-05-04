@@ -37,14 +37,14 @@ double QfeOverrelax::Update() {
 }
 
 int QfeOverrelax::UpdateSite(int s) {
-  QfeSite site = lattice->GetSite(s);
-  double old_phi = lattice->GetPhi(s);
+  QfeSite site = lattice->sites[s];
+  double old_phi = lattice->phi[s];
 
   double numerator = 0.0;
-  double denominator = -lattice->GetMusq() * site.wt;
+  double denominator = -lattice->musq * site.wt;
   for (int n = 0; n < site.neighbors.size(); n++) {
-    QfeLink link = lattice->GetLink(site.links[n]);
-    numerator += link.wt * lattice->GetPhi(site.neighbors[n]);
+    QfeLink link = lattice->links[site.links[n]];
+    numerator += link.wt * lattice->phi[site.neighbors[n]];
     denominator += link.wt;
   }
   double new_phi = 2.0 * numerator / denominator - old_phi;
@@ -52,10 +52,10 @@ int QfeOverrelax::UpdateSite(int s) {
   double old_phi4 = old_phi * old_phi * old_phi * old_phi;
   double new_phi4 = new_phi * new_phi * new_phi * new_phi;
   double new_demon = demon;
-  new_demon += site.wt * lattice->GetLambda() * (old_phi4 - new_phi4);
+  new_demon += site.wt * lattice->lambda * (old_phi4 - new_phi4);
 
   if (new_demon >= 0) {
-    lattice->SetPhi(s, new_phi);
+    lattice->phi[s] = new_phi;
     demon = new_demon;
     return 1;
   } else {

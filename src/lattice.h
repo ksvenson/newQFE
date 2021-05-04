@@ -23,7 +23,7 @@ struct QfeLink {
 
 class QfeLattice {
 
- public:
+public:
   QfeLattice();
   void InitTriangle(int N, double skew = 0.0);
   QfeLink AddLink(int a, int b, double wt);
@@ -31,18 +31,9 @@ class QfeLattice {
   void HotStart();
   void ColdStart();
 
-  inline QfeSite GetSite(int s) { return sites[s]; }
-  inline QfeLink GetLink(int l) { return links[l]; }
-  inline double GetPhi(int s) { return phi[s]; }
-  inline void SetPhi(int s, double value) { phi[s] = value; }
   inline int n_sites() { return sites.size(); }
   inline int n_links() { return links.size(); }
-  inline double GetMag() { return mag; }
-  inline double GetMusq() { return musq; }
-  inline double GetLambda() { return lambda; }
-  inline QfeRng* GetRng() { return &rng; }
 
- private:
   // general qfe lattice variables
   std::vector<QfeSite> sites;
   std::vector<QfeLink> links;

@@ -20,12 +20,12 @@ double QfeMetropolis::Update() {
 }
 
 double QfeMetropolis::UpdateSite(int s) {
-  double phi_old = lattice->GetPhi(s);
+  double phi_old = lattice->phi[s];
   double phi_old2 = phi_old * phi_old;
   double phi_old4 = phi_old2 * phi_old2;
 
   // generate a new field value
-  double phi_new = phi_old + lattice->GetRng()->RandReal(-1.0, 1.0) * z;
+  double phi_new = phi_old + lattice->rng.RandReal(-1.0, 1.0) * z;
   double phi_new2 = phi_new * phi_new;
   double phi_new4 = phi_new2 * phi_new2;
 
@@ -36,23 +36,23 @@ double QfeMetropolis::UpdateSite(int s) {
   double delta_action = 0.0;
 
   // kinetic contribution to the action
-  QfeSite site = lattice->GetSite(s);
+  QfeSite site = lattice->sites[s];
   for (int l = 0; l < site.links.size(); l++) {
     int link_id = site.links[l];
     int neighbor_id = site.neighbors[l];
-    double link_wt = lattice->GetLink(link_id).wt;
-    delta_action -= lattice->GetPhi(neighbor_id) * delta_phi * link_wt;
+    double link_wt = lattice->links[link_id].wt;
+    delta_action -= lattice->phi[neighbor_id] * delta_phi * link_wt;
     delta_action += 0.5 * delta_phi2 * link_wt;
   }
 
   // musq and lambda contributions to the action
-  double mass_term = -0.5 * lattice->GetMusq() * delta_phi2;
-  double interaction_term = lattice->GetLambda() * delta_phi4;
+  double mass_term = -0.5 * lattice->musq * delta_phi2;
+  double interaction_term = lattice->lambda * delta_phi4;
   delta_action += (mass_term + interaction_term) * site.wt;
 
   // metropolis algorithm
-  if (delta_action <= 0.0 || lattice->GetRng()->RandReal() < exp(-delta_action)) {
-    lattice->SetPhi(s, phi_new);
+  if (delta_action <= 0.0 || lattice->rng.RandReal() < exp(-delta_action)) {
+    lattice->phi[s] = phi_new;
     return 1.0;
   } else {
     return 0.0;

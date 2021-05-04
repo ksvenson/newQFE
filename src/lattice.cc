@@ -72,7 +72,7 @@ double QfeLattice::Action() {
   for (int l = 0; l < n_links(); l++) {
     int a = links[l].sites[0];
     int b = links[l].sites[1];
-    double delta_phi = GetPhi(a) - GetPhi(b);
+    double delta_phi = phi[a] - phi[b];
     double delta_phi2 = delta_phi * delta_phi;
     action += 0.5 * delta_phi2 * links[l].wt;
   }
@@ -80,13 +80,13 @@ double QfeLattice::Action() {
   // musq and lambda contributions
   mag = 0.0;
   for (int s = 0; s < n_sites(); s++) {
-    double phi1 = GetPhi(s);
+    double phi1 = phi[s];
     double phi2 = phi1 * phi1;  // phi^2
     double phi4 = phi2 * phi2;  // phi^4
     mag += phi1;
     double mass_term = -0.5 * musq * phi2;
     double interaction_term = lambda * phi4;
-    action += (mass_term + interaction_term) * GetSite(s).wt;
+    action += (mass_term + interaction_term) * sites[s].wt;
   }
   mag /= n_sites();
 
@@ -95,7 +95,7 @@ double QfeLattice::Action() {
 
 void QfeLattice::HotStart() {
   for (int s = 0; s < n_sites(); s++) {
-    SetPhi(s, GetRng()->RandNormal());
+    phi[s] = rng.RandNormal();
   }
 }
 

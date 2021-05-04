@@ -23,7 +23,7 @@ int QfeWolff::Update() {
   std::stack<int> stack;
 
   // choose a random site and add it to the cluster
-  int s = lattice->GetRng()->RandInt(0, lattice->n_sites() - 1);
+  int s = lattice->rng.RandInt(0, lattice->n_sites() - 1);
   AddToCluster(s);
   stack.push(s);
 
@@ -32,10 +32,10 @@ int QfeWolff::Update() {
     stack.pop();
 
     // try to add neighbors
-    QfeSite site = lattice->GetSite(s);
-    double value = lattice->GetPhi(s);
+    QfeSite site = lattice->sites[s];
+    double value = lattice->phi[s];
     for (int n = 0; n < site.neighbors.size(); n++) {
-      QfeLink link = lattice->GetLink(site.links[n]);
+      QfeLink link = lattice->links[site.links[n]];
       s = site.neighbors[n];
       if (TestSite(s, value * link.wt)) {
         AddToCluster(s);
@@ -55,10 +55,10 @@ bool QfeWolff::TestSite(int s, double test_value) {
   if (is_clustered[s]) return false;
 
   // fail if sign bits don't match
-  double value = lattice->GetPhi(s);
+  double value = lattice->phi[s];
   if (signbit(test_value) != signbit(value)) return false;
 
-  if (lattice->GetRng()->RandReal() < (1 - exp(-2 * test_value * value))) {
+  if (lattice->rng.RandReal() < (1 - exp(-2 * test_value * value))) {
     // add the site to the cluster
     return true;
   } else {
@@ -74,7 +74,6 @@ void QfeWolff::AddToCluster(int s) {
 void QfeWolff::FlipCluster() {
 
   for (int s = 0; s < cluster.size(); s++) {
-    double value = lattice->GetPhi(s);
-    lattice->SetPhi(s, -value);
+    lattice->phi[s] *= -1.0;
   }
 }

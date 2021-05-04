@@ -6,19 +6,18 @@
 #include <random>
 #include "rng.h"
 
+#define MAX_NEIGHBORS 6
+
 struct QfeSite {
-  int id;  // site id
   double wt;  // site weight
-  std::vector<int> links;  // ids of links connected to this site
-  std::vector<int> neighbors;  // ids of sites connected to this site
+  int nn;  // number of nearest neighbors
+  int links[MAX_NEIGHBORS];  // nearest neighbor links
+  int neighbors[MAX_NEIGHBORS];  // nearest neighbor sites
 };
 
 struct QfeLink {
-  int id;  // link id
   double wt;  // link weight
-
-  // id of sites that this link goes between
-  int sites[2];
+  int sites[2];  // sites attached by this link
 };
 
 class QfeLattice {
@@ -37,6 +36,7 @@ public:
   // general qfe lattice variables
   std::vector<QfeSite> sites;
   std::vector<QfeLink> links;
+
   QfeRng rng;
 
   // phi^4 specific variables

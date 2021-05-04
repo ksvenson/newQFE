@@ -20,16 +20,17 @@ void QfeLattice::InitTriangle(int N, double skew) {
   sites.resize(N * N);
   phi.resize(n_sites());
 
+  // set all site weights to 1.0
   for (int s = 0; s < n_sites(); s++) {
-    sites[s].id = s;
     sites[s].wt = 1.0;
+    sites[s].nn = 0;
   }
 
   // create links
   links.clear();
 
-  // if skew = 0.0, all weights are the same
-  // if skew = 1.0, the middle link weight is zero
+  // if skew = 0.0, all weights are the same (equilateral triangles)
+  // if skew = 1.0, the middle link weight is zero (right triangles)
   // average weight is 2/3
   double wt1 = (2.0 + skew) / 3.0;
   double wt2 = (2.0 - 2.0 * skew) / 3.0;
@@ -39,29 +40,37 @@ void QfeLattice::InitTriangle(int N, double skew) {
     int x = s % N;
     int y = s / N;
 
-    // add links in the "forward" direction (3 links)
-    int x_right = (x + 1) % N;
-    int y_down = (y + 1) % N;
-    AddLink(s, x_right + y * N, wt1);
-    AddLink(s, x + y_down * N, wt2);
-    AddLink(s, x_right + y_down * N, wt3);
+    // add links in the "forward" direction (3 links per site)
+    // each link will end up with 6 neighbors
+    int xp1 = (x + 1) % N;
+    int yp1 = (y + 1) % N;
+    AddLink(s, xp1 + y * N, wt1);
+    AddLink(s, x + yp1 * N, wt2);
+    AddLink(s, xp1 + yp1 * N, wt3);
   }
 }
 
 // add a link from site a to b with weight wt
 
 QfeLink QfeLattice::AddLink(int a, int b, double wt) {
+
+  int l = n_links();  // link index
   QfeLink link;
-  link.id = n_links();
   link.wt = wt;
+
+  int nn_a = sites[a].nn;
+  sites[a].neighbors[nn_a] = b;
+  sites[a].links[nn_a] = l;
+  sites[a].nn++;
   link.sites[0] = a;
+
+  int nn_b = sites[b].nn;
+  sites[b].neighbors[nn_b] = a;
+  sites[b].links[nn_b] = l;
+  sites[b].nn++;
   link.sites[1] = b;
 
   links.push_back(link);
-  sites[a].links.push_back(link.id);
-  sites[a].neighbors.push_back(b);
-  sites[b].links.push_back(link.id);
-  sites[b].neighbors.push_back(a);
   return link;
 }
 

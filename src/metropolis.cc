@@ -37,11 +37,9 @@ double QfeMetropolis::UpdateSite(int s) {
 
   // kinetic contribution to the action
   QfeSite site = lattice->sites[s];
-  for (int l = 0; l < site.links.size(); l++) {
-    int link_id = site.links[l];
-    int neighbor_id = site.neighbors[l];
-    double link_wt = lattice->links[link_id].wt;
-    delta_action -= lattice->phi[neighbor_id] * delta_phi * link_wt;
+  for (int n = 0; n < site.nn; n++) {
+    double link_wt = lattice->links[site.links[n]].wt;
+    delta_action -= lattice->phi[site.neighbors[n]] * delta_phi * link_wt;
     delta_action += 0.5 * delta_phi2 * link_wt;
   }
 

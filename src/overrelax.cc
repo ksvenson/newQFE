@@ -42,10 +42,10 @@ int QfeOverrelax::UpdateSite(int s) {
 
   double numerator = 0.0;
   double denominator = -lattice->musq * site.wt;
-  for (int n = 0; n < site.neighbors.size(); n++) {
-    QfeLink link = lattice->links[site.links[n]];
-    numerator += link.wt * lattice->phi[site.neighbors[n]];
-    denominator += link.wt;
+  for (int n = 0; n < site.nn; n++) {
+    double link_wt = lattice->links[site.links[n]].wt;
+    numerator += link_wt * lattice->phi[site.neighbors[n]];
+    denominator += link_wt;
   }
   double new_phi = 2.0 * numerator / denominator - old_phi;
 

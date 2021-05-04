@@ -32,12 +32,17 @@ int QfeWolff::Update() {
     stack.pop();
 
     // try to add neighbors
-    QfeSite site = lattice->sites[s];
+    QfeSite* site = &lattice->sites[s];
     double value = lattice->phi[s];
-    for (int n = 0; n < site.neighbors.size(); n++) {
-      QfeLink link = lattice->links[site.links[n]];
-      s = site.neighbors[n];
-      if (TestSite(s, value * link.wt)) {
+    for (int n = 0; n < site->nn; n++) {
+      double link_wt = lattice->links[site->links[n]].wt;
+      s = site->neighbors[n];
+
+      // skip if the site is already clustered
+      if (is_clustered[s]) continue;
+
+      if (TestSite(s, value * link_wt)) {
+        // add the site to the cluster
         AddToCluster(s);
         stack.push(s);
       }
@@ -50,9 +55,6 @@ int QfeWolff::Update() {
 }
 
 bool QfeWolff::TestSite(int s, double test_value) {
-
-  // fail if the site is already clustered
-  if (is_clustered[s]) return false;
 
   // fail if sign bits don't match
   double value = lattice->phi[s];

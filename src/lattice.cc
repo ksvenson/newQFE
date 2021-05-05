@@ -92,7 +92,7 @@ double QfeLattice::Action() {
     double phi1 = phi[s];
     double phi2 = phi1 * phi1;  // phi^2
     double phi4 = phi2 * phi2;  // phi^4
-    mag += phi1;
+    mag += phi1 * sites[s].wt;
     double mass_term = -0.5 * musq * phi2;
     double interaction_term = lambda * phi4;
     action += (mass_term + interaction_term) * sites[s].wt;

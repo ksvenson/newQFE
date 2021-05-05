@@ -46,7 +46,7 @@ double QfeMetropolis::UpdateSite(int s) {
   // musq and lambda contributions to the action
   double mass_term = -0.5 * lattice->musq * delta_phi2;
   double interaction_term = lattice->lambda * delta_phi4;
-  delta_action += (mass_term + interaction_term) * site.wt;
+  delta_action += (mass_term + interaction_term) * site->wt;
 
   // metropolis algorithm
   if (delta_action <= 0.0 || lattice->rng.RandReal() < exp(-delta_action)) {

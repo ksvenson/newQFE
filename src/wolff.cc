@@ -76,6 +76,6 @@ void QfeWolff::AddToCluster(int s) {
 void QfeWolff::FlipCluster() {
 
   for (int s = 0; s < cluster.size(); s++) {
-    lattice->phi[s] *= -1.0;
+    lattice->phi[cluster[s]] *= -1.0;
   }
 }

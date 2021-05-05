@@ -6,13 +6,23 @@
 #include "overrelax.h"
 #include "metropolis.h"
 
+double Mean(std::vector<double>& a);
+double U4(std::vector<double>& m2, std::vector<double>& m4);
+double JackknifeMean(std::vector<double>& a);
+double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4);
+double AutocorrGamma(std::vector<double>& a, int n);
+double AutocorrTime(std::vector<double>& a);
+
 int main(int argc, char* argv[]) {
 
-  int N = 48;
+  int N = 64;
   printf("N: %d\n", N);
 
+  double skew = 1.0;
+  printf("skew: %.2f\n", skew);
+
   QfeLattice lattice;
-  lattice.InitTriangle(N, 1.0);
+  lattice.InitTriangle(N, skew);
   lattice.HotStart();
 
   QfeMetropolis metropolis;
@@ -26,59 +36,141 @@ int main(int argc, char* argv[]) {
 
   printf("Initial Action: %.12f\n", lattice.Action());
 
-  double mag_sum = 0.0;
-  double mag2_sum = 0.0;
-  double mag4_sum = 0.0;
-  double mag8_sum = 0.0;
-  int cluster_sum = 0;
-  int n_update = 20000;
-  for (int i = 0; i < n_update; i++) {
+  // measurements
+  std::vector<double> mag;
+  std::vector<double> action;
+  std::vector<double> demon;
+  std::vector<double> cluster_size;
+  std::vector<double> accept_metropolis;
+  std::vector<double> accept_overrelax;
 
-    int cluster_size = 0;
-    for (int j = 0; j < 5; j++) {
-      cluster_size += wolff.Update();
+  int n_traj = 20000;
+  int n_therm = 1000;
+  int n_skip = 10;
+  int n_wolff = 4;
+  for (int n = 0; n < (n_traj + n_therm); n++) {
+
+    int cluster_size_sum = 0;
+    for (int j = 0; j < n_wolff; j++) {
+      cluster_size_sum += wolff.Update();
     }
-    double accept_metropolis = metropolis.Update();
-    double accept_overrelax = overrelax.Update();
+    cluster_size.push_back(double(cluster_size_sum) / double(N * N));
+    accept_metropolis.push_back(metropolis.Update());
+    accept_overrelax.push_back(overrelax.Update());
+    demon.push_back(overrelax.demon);
 
-    double mag = lattice.mag;
-    double mag2 = mag * mag;
-    double mag4 = mag2 * mag2;
-    mag_sum += mag;
-    mag2_sum += mag2;
-    mag4_sum += mag2 * mag2;
-    mag8_sum += mag4 * mag4;
-    cluster_sum += cluster_size;
-    printf("%06d %.12f %.12f %.4f %.4f %.12f %d\n", i, \
-        lattice.Action(), lattice.mag, \
-        accept_metropolis, \
-        accept_overrelax, overrelax.demon, \
-        cluster_size);
+    if (n % n_skip || n < n_therm) continue;
+
+    action.push_back(lattice.Action());
+    mag.push_back(lattice.mag);
+    printf("%06d %.12f %+.12f %.4f %.4f %.12f %d\n", \
+        n, action.back(), mag.back(), \
+        accept_metropolis.back(), \
+        accept_overrelax.back(), demon.back(), \
+        cluster_size_sum);
   }
 
-  double cluster_ave = double(cluster_sum) / double(n_update * lattice.n_sites());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
+  for (int i = 0; i < mag.size(); i++) {
+    double m = mag[i];
+    double m2 = m * m;
+    mag2[i] = m2;
+    mag4[i] = m2 * m2;
+  }
 
-  double m_ave = mag_sum / double(n_update);
-  double m2_ave = mag2_sum / double(n_update);
-  double m4_ave = mag4_sum / double(n_update);
-  double m8_ave = mag8_sum / double(n_update);
-
-  double m_var = m2_ave - m_ave * m_ave;
-  double m2_var = m4_ave - m2_ave * m2_ave;
-  double m4_var = m8_ave - m4_ave * m4_ave;
-
-  double m_err = sqrt(m_var / double(n_update));
-  double m2_err = sqrt(m2_var / double(n_update));
-  double m4_err = sqrt(m4_var / double(n_update));
-
-  double U4 = 1.5 * (1.0 - m4_ave / (3.0 * m2_ave * m2_ave));
-  double U4_err = (m2_err * m4_ave / m2_ave + 0.5 * m4_err) / (m2_ave * m2_ave);
-
-  printf("<cluster_size>/N=%.12e\n", cluster_ave);
-  printf("<m>=%.12e (%.12e)\n", m_ave, m_err);
-  printf("<m^2>=%.12e (%.12e)\n", m2_ave, m2_err);
-  printf("<m^4>=%.12e (%.12e)\n", m4_ave, m4_err);
-  printf("<U^4>=%.12e (%.12e)\n", U4, U4_err);
+  printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
+  printf("accept_overrelax: %.4f\n", Mean(accept_overrelax));
+  printf("cluster_size/V: %.4f\n", Mean(cluster_size));
+  printf("demon: %.12f (%.12f)\n", Mean(demon), JackknifeMean(demon));
+  printf("action: %.12e (%.12e), %.4f\n", \
+      Mean(action), JackknifeMean(action), AutocorrTime(action));
+  printf("m: %.12e (%.12e), %.4f\n", \
+      Mean(mag), JackknifeMean(mag), AutocorrTime(mag));
+  printf("m^2: %.12e (%.12e), %.4f\n", \
+      Mean(mag2), JackknifeMean(mag2), AutocorrTime(mag2));
+  printf("m^4: %.12e (%.12e), %.4f\n", \
+      Mean(mag4), JackknifeMean(mag4), AutocorrTime(mag4));
+  printf("U4: %.12e (%.12e)\n", U4(mag2, mag4), JackknifeU4(mag2, mag4));
 
   return 0;
+}
+
+double Mean(std::vector<double>& a) {
+  double sum = 0.0;
+  for (int i = 0; i < a.size(); i++) sum += a[i];
+  return sum / double(a.size());
+}
+
+double U4(std::vector<double>& m2, std::vector<double>& m4) {
+  double m2_mean = Mean(m2);
+  double m4_mean = Mean(m4);
+
+  return 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
+}
+
+double JackknifeMean(std::vector<double>& a) {
+  int n = a.size();
+	double mean = Mean(a);
+	double err = 0.0;
+
+	for (int i = 0; i < n; i++) {
+    std::vector<double> a_del = a;
+    a_del.erase(a_del.begin() + i);
+    double diff = Mean(a_del) - mean;
+    err += diff * diff;
+  }
+
+	err = sqrt((double(n) - 1.0) / double(n) * err);
+	return err;
+}
+
+double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4) {
+  int n = m2.size();
+	double mean = U4(m2, m4);
+	double err = 0.0;
+
+	for (int i = 0; i < n; i++) {
+    std::vector<double> m2_del = m2;
+    std::vector<double> m4_del = m4;
+    m2_del.erase(m2_del.begin() + i);
+    m4_del.erase(m4_del.begin() + i);
+    double diff = U4(m2_del, m4_del) - mean;
+    err += diff * diff;
+  }
+
+	err = sqrt((double(n) - 1.0) / double(n) * err);
+	return err;
+}
+
+double AutocorrGamma(std::vector<double>& a, int n) {
+  int N = a.size();
+  double result = 0.0;
+  double mean = Mean(a);
+  int start = 0;
+  int end = N - n;
+
+  if (n < 0) {
+    start = -n;
+    end = N;
+  }
+
+  for (int i = start; i < end; i++) {
+    result += (a[i] - mean) * (a[i + n] - mean);
+  }
+
+  return result / double(end - start);
+}
+
+double AutocorrTime(std::vector<double>& a) {
+  double Gamma0 = AutocorrGamma(a, 0);
+  double result = 0.5 * Gamma0;
+
+  for (int n = 1; n < a.size(); n++) {
+    double curGamma = AutocorrGamma(a, n);
+    if (curGamma < 0.0) break;
+    result += curGamma;
+  }
+
+  return result / Gamma0;
 }

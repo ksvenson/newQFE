@@ -7,7 +7,7 @@ class QfeLattice;
 class QfeOverrelax {
 
 public:
-  void Init(QfeLattice* lattice);
+  QfeOverrelax(QfeLattice* lattice);
   double Update();
   int UpdateSite(int s);
 

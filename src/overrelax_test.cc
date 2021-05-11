@@ -16,15 +16,12 @@ int main(int argc, char* argv[]) {
 
   int N = 64;
 
-  QfeLattice lattice;
+  QfeLattice lattice(1.2725, 0.25);
   lattice.InitTriangle(N);
   lattice.HotStart();
 
-  QfeMetropolis metropolis;
-  metropolis.Init(&lattice);
-
-  QfeOverrelax overrelax;
-  overrelax.Init(&lattice);
+  QfeMetropolis metropolis(&lattice);
+  QfeOverrelax overrelax(&lattice);
 
   double demon_sum = 0.0;
   double demon2_sum = 0.0;

@@ -21,18 +21,19 @@ int main(int argc, char* argv[]) {
   double skew = 1.0;
   printf("skew: %.2f\n", skew);
 
-  QfeLattice lattice;
+  double musq = 1.2724;
+  printf("musq: %.4f\n", musq);
+
+  double lambda = 0.25;
+  printf("lambda: %.4f\n", lambda);
+
+  QfeLattice lattice(musq, lambda);
   lattice.InitTriangle(N, skew);
   lattice.HotStart();
 
-  QfeMetropolis metropolis;
-  metropolis.Init(&lattice);
-
-  QfeOverrelax overrelax;
-  overrelax.Init(&lattice);
-
-  QfeWolff wolff;
-  wolff.Init(&lattice);
+  QfeMetropolis metropolis(&lattice);
+  QfeOverrelax overrelax(&lattice);
+  QfeWolff wolff(&lattice);
 
   printf("Initial Action: %.12f\n", lattice.Action());
 
@@ -44,10 +45,10 @@ int main(int argc, char* argv[]) {
   std::vector<double> accept_metropolis;
   std::vector<double> accept_overrelax;
 
-  int n_traj = 20000;
   int n_therm = 1000;
-  int n_skip = 10;
-  int n_wolff = 4;
+  int n_traj = 40000;
+  int n_skip = 20;
+  int n_wolff = 5;
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     int cluster_size_sum = 0;

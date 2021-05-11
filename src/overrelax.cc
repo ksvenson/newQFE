@@ -11,7 +11,7 @@
 
 #include "lattice.h"
 
-void QfeOverrelax::Init(QfeLattice* lattice) {
+QfeOverrelax::QfeOverrelax(QfeLattice* lattice) {
   this->lattice = lattice;
   demon = 0.0;
 }

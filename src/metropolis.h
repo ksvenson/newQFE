@@ -7,7 +7,7 @@ class QfeLattice;
 class QfeMetropolis {
 
 public:
-  void Init(QfeLattice* lattice);
+  QfeMetropolis(QfeLattice* lattice);
   double Update();
   double UpdateSite(int s);
 

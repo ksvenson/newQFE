@@ -9,7 +9,7 @@ class QfeLattice;
 class QfeWolff {
 
 public:
-  void Init(QfeLattice* lattice);
+  QfeWolff(QfeLattice* lattice);
   int Update();
   bool TestSite(int s, double test_value);
   void AddToCluster(int s);

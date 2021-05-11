@@ -4,9 +4,9 @@
 
 #include <vector>
 
-QfeLattice::QfeLattice() {
-  musq = 1.2725;
-  lambda = 0.25;
+QfeLattice::QfeLattice(double musq, double lambda) {
+  this->musq = musq;
+  this->lambda = lambda;
 }
 
 // skew is a number between 0 and 1 which determines how skewed the triangles

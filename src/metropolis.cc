@@ -6,7 +6,7 @@
 
 #include "lattice.h"
 
-void QfeMetropolis::Init(QfeLattice* lattice) {
+QfeMetropolis::QfeMetropolis(QfeLattice* lattice) {
   this->lattice = lattice;
   z = 0.5;
 }

@@ -8,7 +8,7 @@
 #include <stack>
 #include "lattice.h"
 
-void QfeWolff::Init(QfeLattice* lattice) {
+QfeWolff::QfeWolff(QfeLattice* lattice) {
   this->lattice = lattice;
   is_clustered.resize(lattice->n_sites());
 }

@@ -23,7 +23,7 @@ struct QfeLink {
 class QfeLattice {
 
 public:
-  QfeLattice();
+  QfeLattice(double musq, double lambda);
   void InitTriangle(int N, double skew = 0.0);
   QfeLink AddLink(int a, int b, double wt);
   double Action();

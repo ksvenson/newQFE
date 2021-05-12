@@ -1,7 +1,8 @@
 CXX=g++
 CXXFLAGS=-std=c++11 -O3 -Wall
 
-OBJ=src/lattice.o src/wolff.o src/rng.o src/overrelax.o src/metropolis.o
+OBJ=src/lattice.o src/wolff.o src/rng.o src/overrelax.o src/metropolis.o \
+		src/statistics.o
 BIN=bin/lattice_test bin/overrelax_test
 
 all: ${BIN}

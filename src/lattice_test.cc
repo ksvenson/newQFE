@@ -5,13 +5,7 @@
 #include "wolff.h"
 #include "overrelax.h"
 #include "metropolis.h"
-
-double Mean(std::vector<double>& a);
-double U4(std::vector<double>& m2, std::vector<double>& m4);
-double JackknifeMean(std::vector<double>& a);
-double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4);
-double AutocorrGamma(std::vector<double>& a, int n);
-double AutocorrTime(std::vector<double>& a);
+#include "statistics.h"
 
 int main(int argc, char* argv[]) {
 
@@ -21,7 +15,7 @@ int main(int argc, char* argv[]) {
   double skew = 1.0;
   printf("skew: %.2f\n", skew);
 
-  double musq = 1.2724;
+  double musq = 1.4;
   printf("musq: %.4f\n", musq);
 
   double lambda = 0.25;
@@ -71,11 +65,13 @@ int main(int argc, char* argv[]) {
         cluster_size_sum);
   }
 
+  std::vector<double> mag_abs(mag.size());
   std::vector<double> mag2(mag.size());
   std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
+    mag_abs[i] = abs(m);
     mag2[i] = m2;
     mag4[i] = m2 * m2;
   }
@@ -93,85 +89,8 @@ int main(int argc, char* argv[]) {
   printf("m^4: %.12e (%.12e), %.4f\n", \
       Mean(mag4), JackknifeMean(mag4), AutocorrTime(mag4));
   printf("U4: %.12e (%.12e)\n", U4(mag2, mag4), JackknifeU4(mag2, mag4));
+  printf("susceptibility: %.12e (%.12e)\n", Susceptibility(mag2, mag_abs), \
+      JackknifeSusceptibility(mag2, mag_abs));
 
   return 0;
-}
-
-double Mean(std::vector<double>& a) {
-  double sum = 0.0;
-  for (int i = 0; i < a.size(); i++) sum += a[i];
-  return sum / double(a.size());
-}
-
-double U4(std::vector<double>& m2, std::vector<double>& m4) {
-  double m2_mean = Mean(m2);
-  double m4_mean = Mean(m4);
-
-  return 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
-}
-
-double JackknifeMean(std::vector<double>& a) {
-  int n = a.size();
-	double mean = Mean(a);
-	double err = 0.0;
-
-	for (int i = 0; i < n; i++) {
-    std::vector<double> a_del = a;
-    a_del.erase(a_del.begin() + i);
-    double diff = Mean(a_del) - mean;
-    err += diff * diff;
-  }
-
-	err = sqrt((double(n) - 1.0) / double(n) * err);
-	return err;
-}
-
-double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4) {
-  int n = m2.size();
-	double mean = U4(m2, m4);
-	double err = 0.0;
-
-	for (int i = 0; i < n; i++) {
-    std::vector<double> m2_del = m2;
-    std::vector<double> m4_del = m4;
-    m2_del.erase(m2_del.begin() + i);
-    m4_del.erase(m4_del.begin() + i);
-    double diff = U4(m2_del, m4_del) - mean;
-    err += diff * diff;
-  }
-
-	err = sqrt((double(n) - 1.0) / double(n) * err);
-	return err;
-}
-
-double AutocorrGamma(std::vector<double>& a, int n) {
-  int N = a.size();
-  double result = 0.0;
-  double mean = Mean(a);
-  int start = 0;
-  int end = N - n;
-
-  if (n < 0) {
-    start = -n;
-    end = N;
-  }
-
-  for (int i = start; i < end; i++) {
-    result += (a[i] - mean) * (a[i + n] - mean);
-  }
-
-  return result / double(end - start);
-}
-
-double AutocorrTime(std::vector<double>& a) {
-  double Gamma0 = AutocorrGamma(a, 0);
-  double result = 0.5 * Gamma0;
-
-  for (int n = 1; n < a.size(); n++) {
-    double curGamma = AutocorrGamma(a, n);
-    if (curGamma < 0.0) break;
-    result += curGamma;
-  }
-
-  return result / Gamma0;
 }

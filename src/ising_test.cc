@@ -5,6 +5,19 @@
 #include "ising.h"
 #include "statistics.h"
 
+// for the ising model on a equilateral triangular lattice with no external
+// field, we expect to find a critical point near beta = 0.41. compare with
+// [1] which finds T_c = 1 / beta_c ~ 3.5, but note that using our convention
+// with finite element link weights, the temperature is different by a factor
+// of 2/3. we perform 2 wolff updates and 3 metropolis updates, which for a
+// 64^2 lattice leads a net wolff cluster roughly equal to the lattice size
+// and a net metropolis acceptance of about 1. with these parameters, we expect
+// the 4th order binder cumulant to be near its critical value of 0.8. we also
+// expect to see a peak in the magnetic susceptibility, which can be seen by
+// varying beta.
+
+// [1] Z. Luo, et al., Chinese Phys. B 18, 2696 (2009).
+
 int main(int argc, char* argv[]) {
 
   int N = 64;

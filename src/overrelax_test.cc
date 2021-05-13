@@ -2,8 +2,7 @@
 
 #include <stdio.h>
 #include "lattice.h"
-#include "overrelax.h"
-#include "metropolis.h"
+#include "phi4.h"
 
 // an overrelax sweep should leave the quantity (S_quadratic + demon) invariant
 // where S_quadratic is the quadratic part of the action and demon is the demon
@@ -16,12 +15,11 @@ int main(int argc, char* argv[]) {
 
   int N = 64;
 
-  QfeLattice lattice(1.2725, 0.25);
+  QfeLattice lattice;
   lattice.InitTriangle(N);
-  lattice.HotStart();
 
-  QfeMetropolis metropolis(&lattice);
-  QfeOverrelax overrelax(&lattice);
+  QfePhi4 field(&lattice, 1.2725, 0.25);
+  field.HotStart();
 
   double demon_sum = 0.0;
   double demon2_sum = 0.0;
@@ -30,12 +28,12 @@ int main(int argc, char* argv[]) {
 
   int n_update = 20000;
   for (int i = 0; i < n_update; i++) {
-    metropolis.Update();
-    double demon = overrelax.demon;
-    double S_before = lattice.Action() + demon / double(lattice.n_sites());
-    double accept_rate = overrelax.Update();
-    demon = overrelax.demon;
-    double S_after = lattice.Action() + demon / double(lattice.n_sites());
+    field.Metropolis();
+    double demon = field.overrelax_demon;
+    double S_before = field.Action() + demon / double(lattice.n_sites());
+    double accept_rate = field.Overrelax();
+    demon = field.overrelax_demon;
+    double S_after = field.Action() + demon / double(lattice.n_sites());
     double delta_S = S_after - S_before;
     demon_sum += demon;
     demon2_sum += demon * demon;

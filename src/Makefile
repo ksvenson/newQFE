@@ -1,10 +1,10 @@
 CXX=g++
 CXXFLAGS=-std=c++11 -O3 -Wall
 
-OBJ=lattice.o wolff.o rng.o overrelax.o metropolis.o statistics.o
+OBJ=lattice.o rng.o statistics.o phi4.o ising.o
 BIN_DIR=../bin
 
-all: $(addprefix $(BIN_DIR)/, lattice_test overrelax_test)
+all: $(addprefix $(BIN_DIR)/, lattice_test overrelax_test ising_test)
 
 %.o: %.cc %.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@

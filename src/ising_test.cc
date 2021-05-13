@@ -1,8 +1,8 @@
-// lattice_test.cc
+// ising_test.cc
 
 #include <stdio.h>
 #include "lattice.h"
-#include "phi4.h"
+#include "ising.h"
 #include "statistics.h"
 
 int main(int argc, char* argv[]) {
@@ -10,19 +10,16 @@ int main(int argc, char* argv[]) {
   int N = 64;
   printf("N: %d\n", N);
 
-  double skew = 1.0;
+  double skew = 0.0;
   printf("skew: %.2f\n", skew);
 
-  double musq = 1.27;
-  printf("musq: %.4f\n", musq);
-
-  double lambda = 0.25;
-  printf("lambda: %.4f\n", lambda);
+  double beta = 0.41;
+  printf("beta: %.4f\n", beta);
 
   QfeLattice lattice;
   lattice.InitTriangle(N, skew);
 
-  QfePhi4 field(&lattice, musq, lambda);
+  QfeIsing field(&lattice, beta);
   field.HotStart();
 
   printf("Initial Action: %.12f\n", field.Action());
@@ -30,34 +27,34 @@ int main(int argc, char* argv[]) {
   // measurements
   std::vector<double> mag;
   std::vector<double> action;
-  std::vector<double> demon;
   std::vector<double> cluster_size;
   std::vector<double> accept_metropolis;
-  std::vector<double> accept_overrelax;
 
   int n_therm = 1000;
   int n_traj = 20000;
-  int n_skip = 20;
-  int n_wolff = 4;
+  int n_skip = 2;
+  int n_wolff = 3;
+  int n_metropolis = 5;
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     int cluster_size_sum = 0;
     for (int j = 0; j < n_wolff; j++) {
       cluster_size_sum += field.WolffUpdate();
     }
+    double metropolis_sum = 0.0;
+    for (int j = 0; j < n_metropolis; j++) {
+      metropolis_sum += field.Metropolis();
+    }
     cluster_size.push_back(double(cluster_size_sum) / double(N * N));
-    accept_metropolis.push_back(field.Metropolis());
-    accept_overrelax.push_back(field.Overrelax());
-    demon.push_back(field.overrelax_demon);
+    accept_metropolis.push_back(metropolis_sum);
 
     if (n % n_skip || n < n_therm) continue;
 
     action.push_back(field.Action());
-    mag.push_back(field.MeanPhi());
-    printf("%06d %.12f %+.12f %.4f %.4f %.12f %d\n", \
+    mag.push_back(field.MeanSpin());
+    printf("%06d %.12f %+.12f %.4f %d\n", \
         n, action.back(), mag.back(), \
         accept_metropolis.back(), \
-        accept_overrelax.back(), demon.back(), \
         cluster_size_sum);
   }
 
@@ -73,9 +70,7 @@ int main(int argc, char* argv[]) {
   }
 
   printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
-  printf("accept_overrelax: %.4f\n", Mean(accept_overrelax));
   printf("cluster_size/V: %.4f\n", Mean(cluster_size));
-  printf("demon: %.12f (%.12f)\n", Mean(demon), JackknifeMean(demon));
   printf("action: %.12e (%.12e), %.4f\n", \
       Mean(action), JackknifeMean(action), AutocorrTime(action));
   printf("m: %.12e (%.12e), %.4f\n", \

@@ -106,7 +106,6 @@ int QfeIsing::WolffUpdate() {
       // skip if sign bits don't match
       if (signbit(value) != signbit(spin[s])) continue;
 
-      // double prob = 1 - exp(2.0 * beta * value * spin[s] * link_wt);
       double prob = 1 - exp(-2.0 * beta * link_wt);
       if (lattice->rng.RandReal() < prob) {
         // add the site to the cluster

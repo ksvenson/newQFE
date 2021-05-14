@@ -6,7 +6,7 @@
 #include <random>
 #include "rng.h"
 
-#define MAX_NEIGHBORS 6
+#define MAX_NEIGHBORS 12
 
 struct QfeSite {
   double wt;  // site weight
@@ -24,6 +24,7 @@ class QfeLattice {
 
 public:
   void InitTriangle(int N, double skew = 0.0);
+  void InitAdS2(int n_sites, int q);
   QfeLink AddLink(int a, int b, double wt);
 
   inline int n_sites() { return sites.size(); }

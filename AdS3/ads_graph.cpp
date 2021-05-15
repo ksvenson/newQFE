@@ -20,6 +20,7 @@ uniform_real_distribution<double> unif;
 
 //void latticeScaling(vector<Vertex> &NodeList, Param& p);
 
+//Github test comment
 
 // Begin Main Program
 //====================================================

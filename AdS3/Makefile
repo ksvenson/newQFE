@@ -8,7 +8,7 @@ ARPACK_FLAGS= -DUSE_ARPACK
 
 #Your path to Eigen
 #EIGEN=$(CURDIR)/Eigen
-EIGEN=$(CURDIR)/eigen-3.3.7/
+EIGEN=$(CURDIR)/eigen-3.3.9/
 
 
 CXX = g++ -std=c++11

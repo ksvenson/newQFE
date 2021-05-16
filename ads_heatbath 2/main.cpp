@@ -4,6 +4,8 @@
 #include <string.h>
 #include <cmath>
 #include <complex>
+#include <vector>
+#include <cstring>
 
 using namespace std;
 
@@ -32,6 +34,9 @@ void trajectory(vector<Vertex> &Lattice, Float *mom, param p);
 
 //Heatbath
 void heatbath(vector<Vertex> &Lattice, param p, int iter);
+
+//Propagator
+Float compute_G(vector<Vertex> &Lattice, int n, int N);
 
 Float dHAve = 0.0;
 int accepted_metropolis = 0;
@@ -91,30 +96,180 @@ int main(int argc, char **argv) {
   zeroField(mom, p);
 
   int accept = 0;
-  int count = 0;
+  int accepted = 0;
+  int count = 0;  //proxy for number of thermalizations
   
-  //Initialise Lattice
-  for(int i = 0; i<p.latVol; i++) Lattice[i].phi = 2.0*drand48() - 1.0;
+  //Initialize Lattice
+  for(int i = 0; i<p.latVol; i++) {
+    Lattice[i].phi = 2.0*drand48() - 1.0;
+    if(drand48() < 0.5) Lattice[i].ising = -1;
+    else Lattice[i].ising = 1;
+  }
   //copyLattice(Lattice, true, p);
+  //Float test[1][2][3];
+  cout<<"into the woods"<<endl;
+  
+  //Initialize propagator G
+  //Need of form G[count][i][j]
+  Float***G = new Float**[p.n_meas];
+  Float**Gavg = new Float*[p.latVol];
+
+  for(int i=0; i<p.latVol; i++)
+    {
+      Gavg[i] = new Float[p.latVol];
+      for(int j=0; j<p.latVol; j++)
+	{
+	  Gavg[i][j] = 0.0;
+	}
+    }
+  
+  for(int n=0; n<p.n_meas; n++)
+    {
+      G[n] = new Float*[p.latVol];
+      //cout<<"here"<<endl;
+      //G[i][j] = new Float*[p.latVol];
+      for(int i=0; i<p.latVol; i++)
+	{
+	  G[n][i] = new Float[p.latVol];
+	  //G[n][i] = new Float[p.latVol];
+	  for(int j=0; j<p.latVol; j++)
+	    {
+	      G[n][i][j] = 0.0;
+	    }
+	}
+    }
+
+  cout<<"out of the woods"<<endl;
+  
+  //for(int n=0; n<p.nmeas; n++)
+  //{
+  //  Gcount[n] = G[i][j];
+  //}
   
   //Loop over warmup iterations
   for(int iter=0; iter<p.n_therm; iter++) {
-    //accept = hmc(Lattice, p, iter);    
+    accept = hmc(Lattice, p, iter);    
     heatbath(Lattice, p, iter);
   }
-  //Loop over warmup iterations
-  for(int iter=p.n_therm; iter<p.n_therm + p.n_meas; iter++) {
-
+  //Loop over measurement iterations
+  for(int iter=p.n_therm; iter<p.n_therm + p.n_meas-1; iter++) {
+    //cout<<"count is at beginning: "<<count<<endl;
     count++;
-    double Hold = measH(Lattice, mom, p);
+    //cout<<"count is now: "<<count<<endl;
+    //double Hold = measH(Lattice, mom, p);
     heatbath(Lattice, p, iter);
-    double H = measH(Lattice, mom, p);
+    //double H = measH(Lattice, mom, p);
     //accepted += hmc(Lattice, p, iter);
-    cout << iter << " " << setprecision(16) << (1.0*accepted_metropolis)/((iter+1)*p.AdSVol) << " " << H << " " << (H-Hold) << endl; 
+    //cout << iter << " " << setprecision(16) << (1.0*accepted_metropolis)/((iter+1)*p.AdSVol) << " " << H << " " << (H-Hold) << endl; 
+
+    //Compute boundary-boundary propagator
+    for(int i=0; i<p.latVol; i++)
+      {
+	for(int j=0; j<p.latVol; j++)
+	  {
+	    G[count][i][j] = Lattice[i].phi*Lattice[j].phi;
+	  }
+      }
+
+    
+
+      
+    //G[count][n] = compute_G(Lattice, n, p.latVol);
+
+      //cout<<"G["<<count<<"]["<<n<<"] is: "<<G[count][n]<<endl;
   }
+    //cout<<"count is "<<count<<endl;
+
+  //Average over MC runs
+ 
+  for(int i=0; i<p.latVol; i++)
+    {
+      for(int j=0; j<p.latVol; j++)
+	{
+	  for(int n=0; n<p.n_meas; n++)
+	    {
+	      Gavg[i][j] += G[n][i][j]/p.n_meas;
+	    }
+	}
+    }
+  
+  
+  cout<<"test"<<endl;
+  /*  
+  Float* Gtemp = new Float[p.n_meas];
+  Float* Gavg = new Float[p.n_meas];
+  for(int i=0; i<p.n_meas; i++) {
+    Gtemp[i] = 0.0;
+    Gavg[i] = 0.0;
+  }
+  
+  for(int i=0; i<p.latVol; i++) {
+    for(int j=0; j<count; j++) {
+      Gtemp[i] += G[j][i];
+    }
+    Gavg[i] = Gtemp[i]/(1.0*count);
+  }
+  */
+  cout<<"Print to file?"<<p.src_pos<<endl;
+  
+  //Print to file
+  ofstream myfile;
+  myfile.open("therm_bound_bound.dat");
+  for(int i=endNode(p.Levels-1,p)+1; i<endNode(p.Levels,p)+1; i++) {
+    complex<long double> ratio = Lattice[i].z/Lattice[p.src_pos].z;
+    long double theta = atan2(ratio.imag(), ratio.real());
+    myfile<<d12(Lattice[p.src_pos].z, Lattice[i].z)<<" "
+	  <<theta<<" "
+      //<<Gavg[i]<<" "
+	  <<abs(Lattice[i].z)<<" "
+	  <<Lattice[i].z.real()<<" "
+	  <<Lattice[i].z.imag()<<" "
+	  <<Lattice[p.src_pos].z.real()<<" "
+	  <<Lattice[p.src_pos].z.imag()<<"\n";
+  }
+  myfile.close();
+  //1 geodesic distance
+  //2 theta
+  //3 MC lattice propagator all-to-all
+  //4 |z|
+  //5 Re[z]
+  //6 Im[z]
+
+
+  ofstream myfile1;
+  myfile1.open("therm_G.dat");
+  for(int i=0; i<p.latVol; i++)
+    {
+      for(int j=0; j<p.latVol; j++)
+	{
+	  myfile1 << Gavg[i][j] << " ";
+	}
+      myfile1 << "\n"; 
+    }
+  myfile1.close();
+
+
+  ofstream myfile2;
+  myfile2.open("zcoords.dat");
+  for(int i=0; i<p.latVol; i++)
+    {
+      complex<long double> ratio = Lattice[i]
+      long double theta = atan2(ratio.imag(), ratio.real());
+      myfile2 <<Lattice[i].z.real()<<" "<<Lattice[i].z.imag()<<"\n"; 
+    }
+  myfile2.close();
+
+    
   
   return 0;
 }
+
+Float compute_G(vector<Vertex> &Lattice, int n, int N) {
+  double phi_temp = 0.0;
+  for(int j=0; j<N; j++) phi_temp += Lattice[j].phi*Lattice[n].phi;
+  return phi_temp/(1.0*N);
+}
+
 
 void heatbath(vector<Vertex> &Lattice, param p, int iter) {
   
@@ -126,6 +281,8 @@ void heatbath(vector<Vertex> &Lattice, param p, int iter) {
   double msqr   = 0.50*p.msqr;
   
   double deltaH = 0.0;
+
+  //cout<<"beginning heatbath iter "<<iter<<endl;
   
   for (int i=0; i<p.latVol; i++) {
     
@@ -148,9 +305,11 @@ void heatbath(vector<Vertex> &Lattice, param p, int iter) {
     }
 
     if(deltaH < 0.0) {
+      int temp = Lattice[i].ising;
       //cout << "Accepted" << endl;
       accepted_metropolis++;
       Lattice[i].phi = phi_new;
+      Lattice[i].ising = -temp;
     }
     else if ( drand48() < exp(-deltaH)) {
       //cout<< "Acepted" << endl;
@@ -158,6 +317,7 @@ void heatbath(vector<Vertex> &Lattice, param p, int iter) {
       Lattice[i].phi = phi_new;
     }
   }
+  //cout<<"end heatbath iter "<<iter<<endl;
 }
 
 // Utilities

@@ -4,10 +4,17 @@
 
 #include <cmath>
 
+// TODO: come up with a way to consolidate these so it's not just the same
+//       function over and over again
+
 double Mean(std::vector<double>& a) {
   double sum = 0.0;
   for (int i = 0; i < a.size(); i++) sum += a[i];
   return sum / double(a.size());
+}
+
+double LogMean(std::vector<double>& a) {
+  return log(Mean(a));
 }
 
 double U4(std::vector<double>& m2, std::vector<double>& m4) {
@@ -33,6 +40,22 @@ double JackknifeMean(std::vector<double>& a) {
     std::vector<double> a_del = a;
     a_del.erase(a_del.begin() + i);
     double diff = Mean(a_del) - mean;
+    err += diff * diff;
+  }
+
+	err = sqrt((double(n) - 1.0) / double(n) * err);
+	return err;
+}
+
+double JackknifeLogMean(std::vector<double>& a) {
+  int n = a.size();
+	double mean = LogMean(a);
+	double err = 0.0;
+
+	for (int i = 0; i < n; i++) {
+    std::vector<double> a_del = a;
+    a_del.erase(a_del.begin() + i);
+    double diff = LogMean(a_del) - mean;
     err += diff * diff;
   }
 

@@ -8,40 +8,40 @@
 QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
   this->lattice = lattice;
   this->beta = beta;
-  spin.resize(lattice->n_sites());
-  is_clustered.resize(lattice->n_sites());
+  spin.resize(lattice->sites.size());
+  is_clustered.resize(lattice->sites.size());
 }
 
 double QfeIsing::Action() {
   double S = 0.0;
 
   // sum over links
-  for (int l = 0; l < lattice->n_links(); l++) {
+  for (int l = 0; l < lattice->n_links; l++) {
     QfeLink* link = &lattice->links[l];
     int a = link->sites[0];
     int b = link->sites[1];
     S -= beta * spin[a] * spin[b] * link->wt;
   }
 
-  return S / double(lattice->n_sites());
+  return S / double(lattice->n_sites);
 }
 
 double QfeIsing::MeanSpin() {
   double m = 0.0;
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     m += spin[s] * lattice->sites[s].wt;
   }
-  return m / double(lattice->n_sites());
+  return m / double(lattice->n_sites);
 }
 
 void QfeIsing::HotStart() {
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     spin[s] = double(lattice->rng.RandInt(0, 1) * 2 - 1);
   }
 }
 
 void QfeIsing::ColdStart() {
-  std::fill(spin.begin(), spin.end(), 1.0);
+  std::fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
 }
 
 // metropolis update algorithm
@@ -49,7 +49,7 @@ void QfeIsing::ColdStart() {
 
 double QfeIsing::Metropolis() {
   int accept = 0;
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     double delta_S = 0.0;
 
     // sum over links connected to this site
@@ -67,7 +67,7 @@ double QfeIsing::Metropolis() {
       accept++;
     }
   }
-  return double(accept) / double(lattice->n_sites());
+  return double(accept) / double(lattice->n_sites);
 }
 
 // wolff cluster update algorithm
@@ -83,7 +83,7 @@ int QfeIsing::WolffUpdate() {
   std::stack<int> stack;
 
   // choose a random site and add it to the cluster
-  int s = lattice->rng.RandInt(0, lattice->n_sites() - 1);
+  int s = lattice->rng.RandInt(0, lattice->n_sites - 1);
   wolff_cluster.push_back(s);
   is_clustered[s] = true;
   stack.push(s);

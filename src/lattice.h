@@ -24,11 +24,10 @@ class QfeLattice {
 
 public:
   void InitTriangle(int N, double skew = 0.0);
-  void InitAdS2(int n_sites, int q);
   QfeLink AddLink(int a, int b, double wt);
 
-  inline int n_sites() { return sites.size(); }
-  inline int n_links() { return links.size(); }
+  int n_sites;
+  int n_links;
 
   std::vector<QfeSite> sites;
   std::vector<QfeLink> links;

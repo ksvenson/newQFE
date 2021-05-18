@@ -1,7 +1,7 @@
 // ads2_test.cc
 
 #include <stdio.h>
-#include "lattice.h"
+#include "ads2.h"
 #include "ising.h"
 #include "statistics.h"
 
@@ -16,8 +16,7 @@ int main(int argc, char* argv[]) {
   double beta = 0.33;
   printf("beta: %.4f\n", beta);
 
-  QfeLattice lattice;
-  lattice.InitAdS2(N, q);
+  QfeLatticeAdS2 lattice(N, q);
 
   QfeIsing field(&lattice, beta);
   field.HotStart();
@@ -45,7 +44,7 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    cluster_size.push_back(double(cluster_size_sum) / double(lattice.n_sites()));
+    cluster_size.push_back(double(cluster_size_sum) / double(lattice.n_sites));
     accept_metropolis.push_back(metropolis_sum);
 
     if (n % n_skip || n < n_therm) continue;

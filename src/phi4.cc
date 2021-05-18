@@ -11,15 +11,15 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double musq, double lambda) {
   this->lambda = lambda;
   metropolis_z = 0.5;
   overrelax_demon = 0.0;
-  phi.resize(lattice->n_sites());
-  is_clustered.resize(lattice->n_sites());
+  phi.resize(lattice->sites.size(), 0.0);
+  is_clustered.resize(lattice->sites.size());
 }
 
 double QfePhi4::Action() {
   double S = 0.0;
 
   // kinetic contribution
-  for (int l = 0; l < lattice->n_links(); l++) {
+  for (int l = 0; l < lattice->n_links; l++) {
     int a = lattice->links[l].sites[0];
     int b = lattice->links[l].sites[1];
     double delta_phi = phi[a] - phi[b];
@@ -28,7 +28,7 @@ double QfePhi4::Action() {
   }
 
   // musq and lambda contributions
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     double phi1 = phi[s];
     double phi2 = phi1 * phi1;  // phi^2
     double phi4 = phi2 * phi2;  // phi^4
@@ -37,25 +37,25 @@ double QfePhi4::Action() {
     S += (mass_term + interaction_term) * lattice->sites[s].wt;
   }
 
-  return S / double(lattice->n_sites());
+  return S / double(lattice->n_sites);
 }
 
 double QfePhi4::MeanPhi() {
   double m = 0.0;
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     m += phi[s] * lattice->sites[s].wt;
   }
-  return m / double(lattice->n_sites());
+  return m / double(lattice->n_sites);
 }
 
 void QfePhi4::HotStart() {
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     phi[s] = lattice->rng.RandNormal();
   }
 }
 
 void QfePhi4::ColdStart() {
-  std::fill(phi.begin(), phi.end(), 0.0);
+  std::fill(phi.begin(), phi.begin() + lattice->n_sites, 0.0);
 }
 
 // metropolis update algorithm
@@ -63,7 +63,7 @@ void QfePhi4::ColdStart() {
 
 double QfePhi4::Metropolis() {
   int accept = 0;
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     double phi_old = phi[s];
     double phi_old2 = phi_old * phi_old;
     double phi_old4 = phi_old2 * phi_old2;
@@ -99,7 +99,7 @@ double QfePhi4::Metropolis() {
       accept++;
     }
   }
-  return double(accept) / double(lattice->n_sites());
+  return double(accept) / double(lattice->n_sites);
 }
 
 // overrelaxation update algorithm
@@ -123,7 +123,7 @@ double QfePhi4::Metropolis() {
 
 double QfePhi4::Overrelax() {
   int accept = 0;
-  for (int s = 0; s < lattice->n_sites(); s++) {
+  for (int s = 0; s < lattice->n_sites; s++) {
     QfeSite* site = &lattice->sites[s];
     double phi_old = phi[s];
 
@@ -147,7 +147,7 @@ double QfePhi4::Overrelax() {
       accept++;
     }
   }
-  return double(accept) / double(lattice->n_sites());
+  return double(accept) / double(lattice->n_sites);
 }
 
 // wolff cluster update algorithm
@@ -163,7 +163,7 @@ int QfePhi4::WolffUpdate() {
   std::stack<int> stack;
 
   // choose a random site and add it to the cluster
-  int s = lattice->rng.RandInt(0, lattice->n_sites() - 1);
+  int s = lattice->rng.RandInt(0, lattice->n_sites - 1);
   wolff_cluster.push_back(s);
   is_clustered[s] = true;
   stack.push(s);
@@ -186,7 +186,7 @@ int QfePhi4::WolffUpdate() {
       // skip if sign bits don't match
       if (signbit(value) != signbit(phi[s])) continue;
 
-      double prob = 1 - exp(-2.0 * value * phi[s] * link_wt);
+      double prob = 1.0 - exp(-2.0 * value * phi[s] * link_wt);
       if (lattice->rng.RandReal() < prob) {
         // add the site to the cluster
         wolff_cluster.push_back(s);

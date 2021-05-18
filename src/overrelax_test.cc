@@ -30,10 +30,10 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < n_update; i++) {
     field.Metropolis();
     double demon = field.overrelax_demon;
-    double S_before = field.Action() + demon / double(lattice.n_sites());
+    double S_before = field.Action() + demon / double(lattice.n_sites);
     double accept_rate = field.Overrelax();
     demon = field.overrelax_demon;
-    double S_after = field.Action() + demon / double(lattice.n_sites());
+    double S_after = field.Action() + demon / double(lattice.n_sites);
     double delta_S = S_after - S_before;
     demon_sum += demon;
     demon2_sum += demon * demon;

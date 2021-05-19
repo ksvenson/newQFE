@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
   printf("lambda: %.4f\n", lambda);
 
   QfeLatticeAdS2 lattice(N, q);
-  printf("total sites: %ld\n", lattice.sites.size());
+  printf("total sites: %d\n", lattice.n_sites + lattice.n_fixed);
   printf("bulk sites: %d\n", lattice.n_bulk);
   printf("boundary sites: %d\n", lattice.n_boundary);
   printf("fixed sites: %d\n", lattice.n_fixed);
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   std::vector<double> cluster_size;
   std::vector<double> accept_metropolis;
 
-  // boundary-boundary propagator (all to all)
+  // bulk-bulk 2-pt function (all to all)
   int n_bb = (lattice.n_bulk * (lattice.n_bulk + 1)) / 2;
   std::vector<double> bins_bb(n_bb);  // bin for each pair of sites
   std::vector<int> s1_bb(n_bb);  // s1 for each pair of sites
@@ -52,9 +52,7 @@ int main(int argc, char* argv[]) {
   std::map<int,int> sigma_map;  // map from a sigma value to its bin
   std::vector<double> sigma_bb;  // sigma for each bin
 
-  int s1 = 0;
-  int s2 = 0;
-  for (int i = 0; i < n_bb; i++) {
+  for (int i = 0, s1 = 0, s2 = 0; i < n_bb; i++) {
 
     // bin in log(sigma), i.e. pairs of bulk points with log(sigma) within
     // 1e-3 of each other are in the same bin
@@ -78,8 +76,46 @@ int main(int argc, char* argv[]) {
       s1++;
     }
   }
-  std::vector<double> propagator_bb(sigma_bb.size(), 0.0);
+  std::vector<double> two_point_bb(sigma_bb.size(), 0.0);
   std::vector<int> n_meas_bb(sigma_bb.size());
+
+  // boundary-boundary 2-pt function (all to all)
+  // "d" stands for boundary (like the \partial symbol)
+  int n_dd = (lattice.level_size[3] * (lattice.level_size[4] + 1)) / 2;
+  std::vector<double> bins_dd(n_dd);  // bin for each pair of sites
+  std::vector<int> s1_dd(n_dd);  // s1 for each pair of sites
+  std::vector<int> s2_dd(n_dd);  // s2 for each pair of sites
+  std::map<int,int> theta_map;  // map from a theta value to its bin
+  std::vector<double> theta_dd;  // theta for each bin
+
+  int dd_start = lattice.level_offset[3];
+  int dd_end = lattice.level_offset[4];
+  for (int i = 0, s1 = dd_start, s2 = dd_start; i < n_dd; i++) {
+
+    // bin in theta, i.e. pairs of boundary points with theta within
+    // 1e-2 * pi of each other are in the same bin
+    double theta = lattice.Theta(s1, s2);
+    int theta_int = int(theta / (M_PI * 1.0e-2));
+    if (theta_map.find(theta_int) == theta_map.end()) {
+      // new bin
+      bins_dd[i] = theta_dd.size();
+      theta_map[theta_int] = theta_dd.size();
+      theta_dd.push_back(theta);
+    } else {
+      // bin already exists
+      bins_dd[i] = theta_map[theta_int];
+    }
+
+    s1_dd[i] = s1;
+    s2_dd[i] = s2;
+    s2++;
+    if (s2 == dd_end) {
+      s2 = dd_start;
+      s1++;
+    }
+  }
+  std::vector<double> two_point_dd(theta_dd.size(), 0.0);
+  std::vector<int> n_meas_dd(theta_dd.size());
 
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
@@ -99,11 +135,18 @@ int main(int argc, char* argv[]) {
     action.push_back(field.Action());
     mag.push_back(field.MeanPhi());
 
-    // measure propagators
+    // measure bulk-bulk 2-pt functions
     for (int i = 0; i < n_bb; i++) {
       int bin = bins_bb[i];
-      propagator_bb[bin] += field.phi[s1_bb[i]] * field.phi[s2_bb[i]];
+      two_point_bb[bin] += field.phi[s1_bb[i]] * field.phi[s2_bb[i]];
       n_meas_bb[bin]++;
+    }
+
+    // measure boundary-boundary 2-pt functions
+    for (int i = 0; i < n_dd; i++) {
+      int bin = bins_dd[i];
+      two_point_dd[bin] += field.phi[s1_dd[i]] * field.phi[s2_dd[i]];
+      n_meas_dd[bin]++;
     }
 
     printf("%06d %.12f %+.12f %.4f %d\n", \
@@ -112,11 +155,17 @@ int main(int argc, char* argv[]) {
         cluster_size_sum);
   }
 
-  // print average propagator for each bin
-  printf("\nsigma / propagator_bb\n");
+  // print average 2-pt function for each bin
+  printf("\nsigma / two_point_bb\n");
   for (int i = 0; i < sigma_bb.size(); i++) {
     printf("{%.12e, %.12e},\n", sigma_bb[i], \
-        propagator_bb[i] / double(n_meas_bb[i]));
+        two_point_bb[i] / double(n_meas_bb[i]));
+  }
+
+  printf("\ntheta / two_point_dd\n");
+  for (int i = 0; i < theta_dd.size(); i++) {
+    printf("{%.12e, %.12e},\n", theta_dd[i], \
+        two_point_dd[i] / double(n_meas_dd[i]));
   }
 
   // compute magnetic moments

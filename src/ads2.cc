@@ -109,23 +109,30 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
     }
   }
 
-  n_sites = level_offset[n_levels];  // don't include fixed layer in site count
-  n_links = links.size();
-
-  // calculate coordinates in upper half-plane (include fixed sites)
-  u.resize(z.size());
-  for (int s = 0; s < u.size(); s++) {
-    u[s] = (z[s] + I) / (1.0 + I * z[s]);
-  }
-
-  // identify the number of each type of sites
+  // identify the number of sites of each type (bulk, boundary, fixed)
   n_bulk = level_offset[n_levels];
   n_boundary = level_size[n_levels];
   n_fixed = level_size[n_levels + 1];
+
+  // don't include fixed layer in n_sites
+  n_sites = n_bulk + n_boundary;
+  n_links = links.size();
+
+  // calculate site coordinates in various forms (including fixed sites)
+  r.resize(z.size());
+  theta.resize(z.size());
+  rho.resize(z.size());
+  u.resize(z.size());
+  for (int s = 0; s < u.size(); s++) {
+    r[s] = abs(z[s]);
+    theta[s] = arg(z[s]);
+    rho[s] = log((1 + r[s]) / (1 - r[s]));
+    u[s] = (z[s] + I) / (1.0 + I * z[s]);
+  }
 }
 
 /**
- * @brief Compute the geodesic distance between lattice points s1 and s2.
+ * @brief Compute the geodesic distance between lattice sites s1 and s2.
  */
 
 double QfeLatticeAdS2::Sigma(int s1, int s2) {
@@ -134,4 +141,13 @@ double QfeLatticeAdS2::Sigma(int s1, int s2) {
   double a = abs(1.0 - conj(z1) * z2);
   double b = abs(z1 - z2);
   return log((a + b) / (a - b));
+}
+
+/**
+ * @brief Compute the angular distance between two lattice sites.
+ * Returns a value between 0 and pi.
+ */
+
+double QfeLatticeAdS2::Theta(int s1, int s2) {
+  return M_PI - abs(abs(theta[s1] - theta[s2]) - M_PI);
 }

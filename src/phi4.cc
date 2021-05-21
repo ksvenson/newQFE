@@ -110,7 +110,7 @@ double QfePhi4::Metropolis() {
 // M. Hasenbush, J. Phys. A: Math. Gen. 32 4851 (1999).
 //
 // first we find the value of phi that minimizes the quadratic part of the
-// action this site. in other words, set lambda = 0 and solve dS/dphi_x = 0.
+// action at this site. in other words, set lambda = 0 and solve dS/dphi_x = 0.
 // call this value phi_min. to minimize the action we would just change phi to
 // phi_min, but the overrelaxation trick is to change phi by a little bit more.
 // in the literature, this is normally parametrized as
@@ -182,6 +182,11 @@ int QfePhi4::WolffUpdate() {
 
       // skip if the site is already clustered
       if (is_clustered[s]) continue;
+
+      // skip if phi is zero at this site. this will most likely be a dummy
+      // site at a dirichlet boundary, but it's still correct even if it's
+      // not because the probability of adding it to the cluster will be zero
+      if (phi[s] == 0.0) continue;
 
       // skip if sign bits don't match
       if (signbit(value) != signbit(phi[s])) continue;

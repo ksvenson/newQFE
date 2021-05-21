@@ -33,9 +33,9 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
   sites[0].nn = 0;
 
   // keep track of level size and offset of first site in each level
-  // we need one extra level of fixed sites for dirichlet boundary conditions
-  level_size.resize(n_levels + 1);
-  level_offset.resize(n_levels + 1);
+  // we need one extra level of dummy sites for dirichlet boundary conditions
+  level_size.resize(n_levels + 2);
+  level_offset.resize(n_levels + 2);
   level_size[0] = 1;
   level_offset[0] = 0;
 
@@ -63,6 +63,10 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
     int new_size = sites.size() + level_size[n];
     sites.resize(new_size);
     z.resize(new_size);
+    if (n <= n_levels) {
+      // don't include dummy sites in n_sites
+      n_sites = new_size;
+    }
 
     // add sites to fill up the level
     int p = level_offset[n - 1];  // previous level site to connect to
@@ -101,6 +105,10 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
       AddLink(p, level_offset[n], link_wt);
     }
 
+    // exit the loop if we're at the dummy level
+    // dummy sites aren't connected to each other
+    if (n == (n_levels + 1)) break;
+
     // connect current level sites to one another in a circle
     for (int c = 0; c < level_size[n]; c++) {
       int s = c + level_offset[n];
@@ -109,21 +117,17 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
     }
   }
 
-  // identify the number of sites of each type (bulk, boundary, fixed)
+  // identify the number of sites of each type (bulk, boundary, dummy)
   n_bulk = level_offset[n_levels];
   n_boundary = level_size[n_levels];
-  n_fixed = level_size[n_levels + 1];
+  n_dummy = level_size[n_levels + 1];
 
-  // don't include fixed layer in n_sites
-  n_sites = n_bulk + n_boundary;
-  n_links = links.size();
-
-  // calculate site coordinates in various forms (including fixed sites)
+  // calculate site coordinates in various forms (including dummy sites)
   r.resize(z.size());
   theta.resize(z.size());
   rho.resize(z.size());
   u.resize(z.size());
-  for (int s = 0; s < u.size(); s++) {
+  for (int s = 0; s < z.size(); s++) {
     r[s] = abs(z[s]);
     theta[s] = arg(z[s]);
     rho[s] = log((1 + r[s]) / (1 - r[s]));

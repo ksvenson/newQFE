@@ -1,8 +1,8 @@
 CXX=g++
 CXXFLAGS=-std=c++11 -O3 -Wall
 
-OBJ=lattice.o rng.o statistics.o phi4.o ising.o ads2.o
-BIN=lattice_test overrelax_test ising_test ads2_test ads2_phi4_test
+OBJ=lattice.o rng.o statistics.o phi4.o ising.o ads2.o ads3.o
+BIN=lattice_test overrelax_test ising_test ads2_test ads2_phi4_test ads3_test
 BIN_DIR=../bin
 
 all: $(addprefix $(BIN_DIR)/, $(BIN))

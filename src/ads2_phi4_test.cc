@@ -9,7 +9,7 @@
 
 int main(int argc, char* argv[]) {
 
-  int N = 8;
+  int N = 6;
   printf("N: %d\n", N);
 
   int q = 7;
@@ -22,17 +22,17 @@ int main(int argc, char* argv[]) {
   printf("lambda: %.4f\n", lambda);
 
   QfeLatticeAdS2 lattice(N, q);
-  printf("total sites: %d\n", lattice.n_sites + lattice.n_fixed);
+  printf("total sites: %d\n", lattice.n_sites + lattice.n_dummy);
   printf("bulk sites: %d\n", lattice.n_bulk);
   printf("boundary sites: %d\n", lattice.n_boundary);
-  printf("fixed sites: %d\n", lattice.n_fixed);
+  printf("dummy sites: %d\n", lattice.n_dummy);
 
   QfePhi4 field(&lattice, musq, lambda);
   field.HotStart();
 
   printf("Initial Action: %.12f\n", field.Action());
 
-  int n_therm = 100;
+  int n_therm = 1000;
   int n_traj = 10000;
   int n_skip = 10;
   int n_wolff = 0;

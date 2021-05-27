@@ -1,6 +1,6 @@
 // ising_test.cc
 
-#include <stdio.h>
+#include <cstdio>
 #include "lattice.h"
 #include "ising.h"
 #include "statistics.h"
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
   QfeIsing field(&lattice, beta);
   field.HotStart();
 
-  printf("Initial Action: %.12f\n", field.Action());
+  printf("initial action: %.12f\n", field.Action());
 
   // measurements
   std::vector<double> mag;

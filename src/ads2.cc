@@ -29,15 +29,20 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
 
   // create site 0 at the origin
   sites.resize(1);
+  site_levels.resize(1);
   sites[0].wt = site_wt;
   sites[0].nn = 0;
+  site_levels[0] = 0;
 
   // keep track of level size and offset of first site in each level
   // we need one extra level of dummy sites for dirichlet boundary conditions
   level_size.resize(n_levels + 2);
   level_offset.resize(n_levels + 2);
+  level_sites.resize(n_levels + 2);
   level_size[0] = 1;
   level_offset[0] = 0;
+  level_sites[0].push_back(0);
+  bulk_sites.push_back(0);
 
   z.resize(1, 0.0);
   const double sin_q = sin(M_PI / double(q));
@@ -63,6 +68,7 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
     int new_size = sites.size() + level_size[n];
     sites.resize(new_size);
     z.resize(new_size);
+    site_levels.resize(new_size);
     if (n <= n_levels) {
       // don't include dummy sites in n_sites
       n_sites = new_size;
@@ -76,6 +82,13 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
       int s = level_offset[n] + c;
       sites[s].wt = site_wt;
       sites[s].nn = 0;
+      level_sites[n].push_back(s);
+      if (n < n_levels) {
+        bulk_sites.push_back(s);
+      } else if (n == n_levels) {
+        boundary_sites.push_back(s);
+      }
+      site_levels[s] = n;
       AddLink(p, s, link_wt);
 
       if (s == 1) {
@@ -133,6 +146,28 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
     rho[s] = log((1 + r[s]) / (1 - r[s]));
     u[s] = (z[s] + I) / (1.0 + I * z[s]);
   }
+
+  // update average rho on each level
+  level_rho.resize(n_levels + 2);
+  level_cosh_rho.resize(n_levels + 2);
+  total_cosh_rho.resize(n_levels + 2);
+  double total_cosh_rho_sum = 0.0;
+  for (int n = 0; n <= (n_levels + 1); n++) {
+    double rho_sum = 0.0;
+    double cosh_rho_sum = 0.0;
+    for (int i = 0; i < level_size[n]; i++) {
+      int s = level_offset[n] + i;
+      rho_sum += rho[s];
+      cosh_rho_sum += cosh(rho[s]);
+      total_cosh_rho_sum += cosh(rho[s]);
+    }
+    level_rho[n] = rho_sum / double(level_size[n]);
+    level_cosh_rho[n] = cosh_rho_sum / double(level_size[n]);
+    total_cosh_rho[n] = total_cosh_rho_sum / double(level_offset[n] + level_size[n]);
+    printf("%d %.12f %.12f %.12f %.4f\n", \
+        n, level_rho[n], level_cosh_rho[n], total_cosh_rho[n], \
+        2.0 * total_cosh_rho[n] / level_cosh_rho[1]);
+  }
 }
 
 /**
@@ -140,10 +175,12 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_levels, int q) {
  */
 
 double QfeLatticeAdS2::Sigma(int s1, int s2) {
-  Complex z1 = z[s1];
-  Complex z2 = z[s2];
-  double a = abs(1.0 - conj(z1) * z2);
-  double b = abs(z1 - z2);
+
+  if (s1 == s2) return 0.0;
+  const Complex z1 = z[s1];
+  const Complex z2 = z[s2];
+  const double a = abs(1.0 - conj(z1) * z2);
+  const double b = abs(z1 - z2);
   return log((a + b) / (a - b));
 }
 

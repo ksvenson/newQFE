@@ -1,6 +1,6 @@
 // overrelax_test.cc
 
-#include <stdio.h>
+#include <cstdio>
 #include "lattice.h"
 #include "phi4.h"
 

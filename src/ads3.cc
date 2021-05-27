@@ -25,7 +25,10 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
   // we start with a single AdS2 slice, and we need to make Nt copies
   int n_sites_slice = level_offset[n_levels + 1];  // dynamic sites per slice
   n_sites = n_sites_slice * Nt;  // number of dynamic sites
+  n_boundary *= Nt;
+  n_bulk *= Nt;
   sites.resize(n_sites + n_dummy);
+  site_levels.resize(sites.size());
 
   // resize coordinate arrays
   z.resize(sites.size());
@@ -35,12 +38,23 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
   u.resize(sites.size());
   t.resize(sites.size(), 0);
 
+  // we want to have the lattice spacing be as uniform as possible, so
+  // we set the ratio of timelike and spacelike lattice spacings equal to
+  // the average value of cosh(rho) on the boundary
+  t_scale = 1.0 / level_rho[1];
+  // t_scale = level_cosh_rho[1];
+  // t_scale = level_cosh_rho[n_levels];
+  // t_scale = total_cosh_rho[n_levels];
+  printf("t_scale: %.12f\n", t_scale);
+
   // move the dummy sites to the end of the array
+  level_sites[n_levels + 1].clear();
   for (int i = 0; i < n_dummy; i++) {
     int s_old = n_sites_slice + i;
     int s_new = n_sites + i;
     sites[s_new].nn = 0;
     sites[s_new].wt = cosh(rho[s_old]);
+    level_sites[n_levels + 1].push_back(s_new);
 
     // copy coordinates
     z[s_new] = z[s_old];
@@ -56,7 +70,8 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
     QfeSite* site0 = &sites[s0];
 
     // adjust the site weight
-    site0->wt = cosh(rho[s0]);
+    site0->wt = cosh(rho[s0]) / t_scale;
+    int level = site_levels[s0];
 
     // adjust neighbor table for dummy neighbors
     for (int n = 0; n < site0->nn; n++) {
@@ -71,6 +86,14 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
       int s = n_sites_slice * tt + s0;
       sites[s].nn = 0;  // add links later
       sites[s].wt = site0->wt;
+
+      site_levels[s] = level;
+      level_sites[level].push_back(s);
+      if (level < n_levels) {
+        bulk_sites.push_back(s);
+      } else if (level == n_levels) {
+        boundary_sites.push_back(s);
+      }
 
       z[s] = z[s0];
       r[s] = r[s0];
@@ -99,7 +122,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
     }
 
     // adjust the link weight
-    double link_wt = 0.5 * (cosh(rho[s_a]) + cosh(rho[s_b]));
+    double link_wt = 0.5 * (cosh(rho[s_a]) + cosh(rho[s_b])) / t_scale;
     links[l].wt = link_wt;
 
     // add links in the other slices
@@ -116,14 +139,22 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_levels, int q, int Nt) :
 
   // add links to connect the time slices with periodic boundary conditions
   for (int s = 0; s < n_sites; s++) {
-    AddLink(s, (s + n_sites_slice) % n_sites, 1.0 / cosh(rho[s]));
+    AddLink(s, (s + n_sites_slice) % n_sites, t_scale / cosh(rho[s]));
   }
 }
 
 double QfeLatticeAdS3::Sigma(int s1, int s2) {
-  return QfeLatticeAdS2::Sigma(s1, s2);
+  if (s1 == s2) return 0.0;
+  double r1 = rho[s1];
+  double r2 = rho[s2];
+  double dt = DeltaT(s1, s2);
+  double theta = Theta(s1, s2);
+  double x1 = cosh(dt) * cosh(r1) * cosh(r2);
+  double x2 = cos(theta) * sinh(r1) * sinh(r2);
+  return acosh(x1 - x2);
 }
 
-double QfeLatticeAdS3::Theta(int s1, int s2) {
-  return QfeLatticeAdS2::Theta(s1, s2);
+double QfeLatticeAdS3::DeltaT(int s1, int s2) {
+  int dt = (Nt / 2) - abs(abs(t[s1] - t[s2]) - (Nt / 2));
+  return double(dt) / t_scale;
 }

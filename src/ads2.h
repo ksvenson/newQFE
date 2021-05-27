@@ -23,10 +23,19 @@ public:
   std::vector<int> level_size;  // size of each level
   std::vector<int> level_offset;  // offset of first site in each level
 
+  std::vector<std::vector<int>> level_sites;  // list of sites at each level
+  std::vector<int> bulk_sites;  // list of bulk sites
+  std::vector<int> boundary_sites;  // list of boundary sites
+  std::vector<int> site_levels;  // level for each site
+
   // site coordinates
   std::vector<Complex> z;  // complex coordinates on poincaré disc
   std::vector<double> r;  // abs(z)
   std::vector<double> theta;  // arg(z)
   std::vector<double> rho;  // global radial coordinate
   std::vector<Complex> u;  // complex coordinates in upper half-plane
+
+  std::vector<double> level_rho;  // average rho at each level
+  std::vector<double> level_cosh_rho;  // average cosh(rho) at each level
+  std::vector<double> total_cosh_rho;  // average cosh(rho) up to each level
 };

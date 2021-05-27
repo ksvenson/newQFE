@@ -1,6 +1,6 @@
 // lattice_test.cc
 
-#include <stdio.h>
+#include <cstdio>
 #include "lattice.h"
 #include "phi4.h"
 #include "statistics.h"
@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
   QfePhi4 field(&lattice, musq, lambda);
   field.HotStart();
 
-  printf("Initial Action: %.12f\n", field.Action());
+  printf("initial action: %.12f\n", field.Action());
 
   // measurements
   std::vector<double> mag;

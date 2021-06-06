@@ -1,9 +1,38 @@
-// phi4.cc
+// phi4.h
 
-#include "phi4.h"
+#pragma once
 
+#include <vector>
 #include <stack>
 #include "lattice.h"
+
+using std::vector;
+using std::fill;
+using std::stack;
+
+class QfePhi4 {
+
+public:
+  QfePhi4(QfeLattice* lattice, double musq, double lambda);
+  double Action();
+  double MeanPhi();
+  void HotStart();
+  void ColdStart();
+  double Metropolis();
+  double Overrelax();
+  int WolffUpdate();
+
+  QfeLattice* lattice;
+  vector<double> phi;  // scalar field
+  vector<double> moments;  // magnetic moments
+  double lambda;  // bare coupling
+  double musq;  // bare mass squared
+
+  double metropolis_z;
+  double overrelax_demon;
+  vector<bool> is_clustered;  // keeps track of which sites are clustered
+  vector<int> wolff_cluster;  // array of clustered sites
+};
 
 QfePhi4::QfePhi4(QfeLattice* lattice, double musq, double lambda) {
   this->lattice = lattice;
@@ -16,7 +45,7 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double musq, double lambda) {
 }
 
 double QfePhi4::Action() {
-  double S = 0.0;
+  double action = 0.0;
 
   // kinetic contribution
   for (int l = 0; l < lattice->n_links; l++) {
@@ -24,7 +53,7 @@ double QfePhi4::Action() {
     int b = lattice->links[l].sites[1];
     double delta_phi = phi[a] - phi[b];
     double delta_phi2 = delta_phi * delta_phi;
-    S += 0.5 * delta_phi2 * lattice->links[l].wt;
+    action += 0.5 * delta_phi2 * lattice->links[l].wt;
   }
 
   // musq and lambda contributions
@@ -34,10 +63,10 @@ double QfePhi4::Action() {
     double phi4 = phi2 * phi2;  // phi^4
     double mass_term = -0.5 * musq * phi2;
     double interaction_term = lambda * phi4;
-    S += (mass_term + interaction_term) * lattice->sites[s].wt;
+    action += (mass_term + interaction_term) * lattice->sites[s].wt;
   }
 
-  return S / double(lattice->n_sites);
+  return action / double(lattice->n_sites);
 }
 
 double QfePhi4::MeanPhi() {
@@ -55,7 +84,7 @@ void QfePhi4::HotStart() {
 }
 
 void QfePhi4::ColdStart() {
-  std::fill(phi.begin(), phi.begin() + lattice->n_sites, 0.0);
+  fill(phi.begin(), phi.begin() + lattice->n_sites, 0.0);
 }
 
 // metropolis update algorithm
@@ -107,7 +136,7 @@ double QfePhi4::Metropolis() {
 // C. Whitmer, Phys. Rev. D 29, 306 (1984).
 // F. R. Brown and T. J. Woch, Phys. Rev. Lett. 58, 2394 (1987).
 // M. Creutz, Phys. Rev. D 36, 515 (1987).
-// M. Hasenbush, J. Phys. A: Math. Gen. 32 4851 (1999).
+// M. Hasenbusch, J. Phys. A: Math. Gen. 32 4851 (1999).
 //
 // first we find the value of phi that minimizes the quadratic part of the
 // action at this site. in other words, set lambda = 0 and solve dS/dphi_x = 0.
@@ -117,7 +146,7 @@ double QfePhi4::Metropolis() {
 //     phi -> phi + omega * delta_phi
 // where delta_phi is phi_min - phi. we set omega to 2, which actually keeps
 // the quadratic part of the action invariant. then we use a "demon" (as
-// described in the Hasenbush reference) to deal with the non-quadratic part
+// described in the Hasenbusch reference) to deal with the non-quadratic part
 // of the action. The accept-reject step ensures that we maintain detailed
 // balance.
 
@@ -156,11 +185,11 @@ double QfePhi4::Overrelax() {
 int QfePhi4::WolffUpdate() {
 
   // remove all sites from the cluster
-  std::fill(is_clustered.begin(), is_clustered.end(), false);
+  fill(is_clustered.begin(), is_clustered.end(), false);
   wolff_cluster.clear();
 
   // create the stack
-  std::stack<int> stack;
+  stack<int> stack;
 
   // choose a random site and add it to the cluster
   int s = lattice->rng.RandInt(0, lattice->n_sites - 1);

@@ -1,9 +1,15 @@
-// ads3_test.cc
+// ads3_crit.cc
 
 #include <cstdio>
+#include <vector>
+#include <string>
+#include <getopt.h>
 #include "ads3.h"
 #include "phi4.h"
 #include "statistics.h"
+
+using std::vector;
+using std::stod;
 
 int main(int argc, char* argv[]) {
 
@@ -19,54 +25,123 @@ int main(int argc, char* argv[]) {
   //    7          150          507.2320663               0.295722629
   //    8          398         1347.310396                0.295403347
 
-  int N = atoi(argv[1]);
-  printf("N: %d\n", N);
-
+  int n_layers = 4;
   int q = 7;
+  int Nt = 8;
+  double musq = 1.0;
+  double lambda = 1.0;
+  int n_therm = 1000;
+  int n_traj = 20000;
+  int n_skip = 20;
+  int n_wolff = 4;
+  int n_metropolis = 1;
+  double metropolis_z = 0.1;
+
+  while (true) {
+
+    struct option long_options[] = {
+      {"n_layers", required_argument, 0, 'N'},
+      {"q", required_argument, 0, 'q'},
+      {"n_t", required_argument, 0, 'T'},
+      {"musq", required_argument, 0, 'm'},
+      {"lambda", required_argument, 0, 'l'},
+      {"n_therm", required_argument, 0, 'h'},
+      {"n_traj", required_argument, 0, 't'},
+      {"n_skip", required_argument, 0, 's'},
+      {"n_wolff", required_argument, 0, 'w'},
+      {"n_metropolis", required_argument, 0, 'e'},
+      {"metropolis_z", required_argument, 0, 'z'},
+      {0, 0, 0, 0}
+    };
+
+    const char* short_options = "NqTmlhtswez";
+
+    int o = 0;
+    int c = getopt_long(argc, argv, short_options, long_options, &o);
+    if (c == -1) break;
+
+    switch (c) {
+      case 'N':
+        n_layers = atoi(optarg);
+        break;
+      case 'q':
+        q = stod(optarg);
+        break;
+      case 'T':
+        Nt = atoi(optarg);
+        break;
+      case 'm':
+        musq = stod(optarg);
+        break;
+      case 'l':
+        lambda = stod(optarg);
+        break;
+      case 'h':
+        n_therm = atoi(optarg);
+        break;
+      case 't':
+        n_traj = atoi(optarg);
+        break;
+      case 's':
+        n_skip = atoi(optarg);
+        break;
+      case 'w':
+        n_wolff = atoi(optarg);
+        break;
+      case 'e':
+        n_metropolis = atoi(optarg);
+        break;
+      case 'z':
+        metropolis_z = stod(optarg);
+        break;
+      default:
+        break;
+    }
+  }
+
+  printf("n_layers: %d\n", n_layers);
   printf("q: %d\n", q);
-
-  int Nt = atoi(argv[2]);
   printf("Nt: %d\n", Nt);
-
-  double musq = std::stod(argv[3]);
   printf("musq: %.4f\n", musq);
-
-  double lambda = std::stod(argv[4]);
   printf("lambda: %.4f\n", lambda);
+  printf("n_therm: %d\n", n_therm);
+  printf("n_traj: %d\n", n_traj);
+  printf("n_skip: %d\n", n_skip);
+  printf("n_wolff: %d\n", n_wolff);
+  printf("n_metropolis: %d\n", n_metropolis);
+  printf("metropolis_z: %.4f\n", metropolis_z);
 
-  QfeLatticeAdS3 lattice(N, q, Nt);
+  QfeLatticeAdS3 lattice(n_layers, q, Nt);
   printf("total sites: %d\n", lattice.n_sites + lattice.n_dummy);
   printf("bulk sites: %d\n", lattice.n_bulk);
   printf("boundary sites: %d\n", lattice.n_boundary);
   printf("dummy sites: %d\n", lattice.n_dummy);
+  printf("t_scale: %.12f\n", lattice.t_scale);
 
-  printf("average rho/cosh(rho) at each level:\n");
-  for (int n = 0; n < N; n++) {
-    printf("%d %.12f %.12f\n", \
-        n, lattice.level_rho[n], lattice.level_cosh_rho[n]);
+  printf("average rho/cosh(rho) at each layer:\n");
+  for (int n = 0; n <= n_layers + 1; n++) {
+    printf("%d %.12f %.12f %.12f\n", n, \
+        lattice.layer_rho[n], \
+        lattice.layer_cosh_rho[n], \
+        lattice.total_cosh_rho[n]);
   }
 
   QfePhi4 field(&lattice, musq, lambda);
-  field.ColdStart();
-  field.metropolis_z = 0.1;
+  field.metropolis_z = metropolis_z;
+  field.HotStart();
 
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  std::vector<double> mag;
-  std::vector<double> mag_bulk;
-  std::vector<double> mag_boundary;
-  std::vector<double> action;
-  std::vector<double> cluster_size;
-  std::vector<double> accept_metropolis;
-  std::vector<double> accept_overrelax;
-  std::vector<double> demon;
+  vector<double> mag;
+  vector<double> mag_bulk;
+  vector<double> mag_boundary;
+  vector<double> action;
+  QfeMeasReal cluster_size;
+  QfeMeasReal accept_metropolis;
+  QfeMeasReal accept_overrelax;
+  QfeMeasReal demon;
 
-  int n_therm = 1000;
-  int n_traj = 20000;
-  int n_skip = 20;
-  int n_wolff = 5;
-  int n_metropolis = 1;
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     int cluster_size_sum = 0;
@@ -77,19 +152,20 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    cluster_size.push_back(double(cluster_size_sum) / double(lattice.n_sites));
-    accept_metropolis.push_back(metropolis_sum);
-    accept_overrelax.push_back(field.Overrelax());
-    demon.push_back(field.overrelax_demon);
+    cluster_size.Measure(double(cluster_size_sum) / double(lattice.n_sites));
+    accept_metropolis.Measure(metropolis_sum);
+    accept_overrelax.Measure(field.Overrelax());
 
     if (n % n_skip || n < n_therm) continue;
+
+    demon.Measure(field.overrelax_demon);
 
     // measure <phi> in the bulk
     double phi_bulk_sum = 0.0;
     int n_bulk_sum = 0;
-    for (int level = 0; level < N - 1; level++) {
-      for (int i = 0; i < lattice.level_sites[level].size(); i++) {
-        int s = lattice.level_sites[level][i];
+    for (int layer = 0; layer < (n_layers - 1); layer++) {
+      for (int i = 0; i < lattice.layer_sites[layer].size(); i++) {
+        int s = lattice.layer_sites[layer][i];
         phi_bulk_sum += field.phi[s] * lattice.sites[s].wt;
         n_bulk_sum++;
       }
@@ -99,8 +175,8 @@ int main(int argc, char* argv[]) {
     // measure <phi> on the boundary
     double phi_boundary_sum = 0.0;
     int n_boundary_sum = 0;
-    for (int i = 0; i < lattice.level_sites[N].size(); i++) {
-      int s = lattice.level_sites[N][i];
+    for (int i = 0; i < lattice.layer_sites[n_layers].size(); i++) {
+      int s = lattice.layer_sites[n_layers][i];
       phi_boundary_sum += field.phi[s] * lattice.sites[s].wt;
       n_boundary_sum++;
     }
@@ -108,16 +184,23 @@ int main(int argc, char* argv[]) {
 
     action.push_back(field.Action());
     mag.push_back(field.MeanPhi());
-    printf("%06d %.12f %+.12f %.4f %.4f %.12f %d\n", \
+    printf("%06d %.12f %+.12f %.4f %.4f %.12f %.4f\n", \
         n, action.back(), mag.back(), \
-        accept_metropolis.back(), \
-        accept_overrelax.back(), demon.back(), \
-        cluster_size_sum);
+        accept_metropolis.last, \
+        accept_overrelax.last, demon.last, \
+        cluster_size.last);
   }
 
-  std::vector<double> mag_abs(mag.size());
-  std::vector<double> mag2(mag.size());
-  std::vector<double> mag4(mag.size());
+  printf("cluster_size/V: %.4f\n", cluster_size.Mean());
+  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
+  printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
+  printf("demon: %.12f (%.12f)\n", demon.Mean(), demon.Error());
+  printf("action: %.12e (%.12e), %.4f\n", \
+      Mean(action), JackknifeMean(action), AutocorrTime(action));
+
+  vector<double> mag_abs(mag.size());
+  vector<double> mag2(mag.size());
+  vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
@@ -126,9 +209,9 @@ int main(int argc, char* argv[]) {
     mag4[i] = m2 * m2;
   }
 
-  std::vector<double> mag_abs_bulk(mag_bulk.size());
-  std::vector<double> mag2_bulk(mag_bulk.size());
-  std::vector<double> mag4_bulk(mag_bulk.size());
+  vector<double> mag_abs_bulk(mag_bulk.size());
+  vector<double> mag2_bulk(mag_bulk.size());
+  vector<double> mag4_bulk(mag_bulk.size());
   for (int i = 0; i < mag_bulk.size(); i++) {
     double m = mag_bulk[i];
     double m2 = m * m;
@@ -137,9 +220,9 @@ int main(int argc, char* argv[]) {
     mag4_bulk[i] = m2 * m2;
   }
 
-  std::vector<double> mag_abs_boundary(mag_boundary.size());
-  std::vector<double> mag2_boundary(mag_boundary.size());
-  std::vector<double> mag4_boundary(mag_boundary.size());
+  vector<double> mag_abs_boundary(mag_boundary.size());
+  vector<double> mag2_boundary(mag_boundary.size());
+  vector<double> mag4_boundary(mag_boundary.size());
   for (int i = 0; i < mag_boundary.size(); i++) {
     double m = mag_boundary[i];
     double m2 = m * m;
@@ -147,13 +230,6 @@ int main(int argc, char* argv[]) {
     mag2_boundary[i] = m2;
     mag4_boundary[i] = m2 * m2;
   }
-
-  printf("cluster_size/V: %.4f\n", Mean(cluster_size));
-  printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
-  printf("accept_overrelax: %.4f\n", Mean(accept_overrelax));
-  printf("demon: %.12f (%.12f)\n", Mean(demon), JackknifeMean(demon));
-  printf("action: %.12e (%.12e), %.4f\n", \
-      Mean(action), JackknifeMean(action), AutocorrTime(action));
 
   printf("\nbulk + boundary:\n");
   printf("m: %.12e (%.12e), %.4f\n", \
@@ -196,12 +272,12 @@ int main(int argc, char* argv[]) {
       Susceptibility(mag2_boundary, mag_abs_boundary), \
       JackknifeSusceptibility(mag2_boundary, mag_abs_boundary));
 
-  char path[50];
   FILE* file;
 
-  sprintf(path, "all_%d.dat", N);
-  file = fopen(path, "a");
-  fprintf(file, "%.12f", musq);
+  file = fopen("ads3_crit_all.dat", "a");
+  fprintf(file, "%d", n_layers);
+  fprintf(file, " %d", Nt);
+  fprintf(file, " %.12f", musq);
   fprintf(file, " %.12f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2, mag4), \
@@ -212,9 +288,10 @@ int main(int argc, char* argv[]) {
   fprintf(file, "\n");
   fclose(file);
 
-  sprintf(path, "bulk_%d.dat", N);
-  file = fopen(path, "a");
-  fprintf(file, "%.12f", musq);
+  file = fopen("ads3_crit_bulk.dat", "a");
+  fprintf(file, "%d", n_layers);
+  fprintf(file, " %d", Nt);
+  fprintf(file, " %.12f", musq);
   fprintf(file, " %.12f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_bulk, mag4_bulk), \
@@ -225,9 +302,10 @@ int main(int argc, char* argv[]) {
   fprintf(file, "\n");
   fclose(file);
 
-  sprintf(path, "boundary_%d.dat", N);
-  file = fopen(path, "a");
-  fprintf(file, "%.12f", musq);
+  file = fopen("ads3_crit_boundary.dat", "a");
+  fprintf(file, "%d", n_layers);
+  fprintf(file, " %d", Nt);
+  fprintf(file, " %.12f", musq);
   fprintf(file, " %.12f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_boundary, mag4_boundary), \

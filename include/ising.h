@@ -1,9 +1,33 @@
-// ising.cc
+// ising.h
 
-#include "ising.h"
+#pragma once
 
+#include <vector>
 #include <stack>
 #include "lattice.h"
+
+using std::vector;
+using std::fill;
+using std::stack;
+
+class QfeIsing {
+
+public:
+  QfeIsing(QfeLattice* lattice, double beta);
+  double Action();
+  double MeanSpin();
+  void HotStart();
+  void ColdStart();
+  double Metropolis();
+  int WolffUpdate();
+
+  QfeLattice* lattice;
+  vector<double> spin;  // Z2 field
+  double beta;  // bare coupling
+
+  vector<bool> is_clustered;  // keeps track of which sites are clustered
+  vector<int> wolff_cluster;  // array of clustered sites
+};
 
 QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
   this->lattice = lattice;
@@ -13,17 +37,17 @@ QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
 }
 
 double QfeIsing::Action() {
-  double S = 0.0;
+  double action = 0.0;
 
   // sum over links
   for (int l = 0; l < lattice->n_links; l++) {
     QfeLink* link = &lattice->links[l];
     int a = link->sites[0];
     int b = link->sites[1];
-    S -= beta * spin[a] * spin[b] * link->wt;
+    action -= beta * spin[a] * spin[b] * link->wt;
   }
 
-  return S / double(lattice->n_sites);
+  return action / double(lattice->n_sites);
 }
 
 double QfeIsing::MeanSpin() {
@@ -41,7 +65,7 @@ void QfeIsing::HotStart() {
 }
 
 void QfeIsing::ColdStart() {
-  std::fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
+  fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
 }
 
 // metropolis update algorithm
@@ -76,11 +100,11 @@ double QfeIsing::Metropolis() {
 int QfeIsing::WolffUpdate() {
 
   // remove all sites from the cluster
-  std::fill(is_clustered.begin(), is_clustered.end(), false);
+  fill(is_clustered.begin(), is_clustered.end(), false);
   wolff_cluster.clear();
 
   // create the stack
-  std::stack<int> stack;
+  stack<int> stack;
 
   // choose a random site and add it to the cluster
   int s = lattice->rng.RandInt(0, lattice->n_sites - 1);

@@ -1,14 +1,14 @@
 
-all: src ads
+all: tests ads
 
-.PHONY: clean ads src
+.PHONY: clean tests ads
 
 clean:
-	$(MAKE) -C src clean
+	$(MAKE) -C tests clean
 	$(MAKE) -C ads_heatbath clean
 
-src:
-	$(MAKE) -C src
+examples:
+	$(MAKE) -C tests
 
 ads:
 	$(MAKE) -C ads_heatbath

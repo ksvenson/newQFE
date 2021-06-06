@@ -1,9 +1,12 @@
 // lattice_test.cc
 
 #include <cstdio>
+#include <vector>
 #include "lattice.h"
 #include "phi4.h"
 #include "statistics.h"
+
+using std::vector;
 
 // phi4 theory on a square lattice has a critical point near lambda = 0.25,
 // musq = 1.27 [1]. we set skew to 1.0 to get a square lattice. on a 64^2
@@ -41,12 +44,12 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  std::vector<double> mag;
-  std::vector<double> action;
-  std::vector<double> demon;
-  std::vector<double> cluster_size;
-  std::vector<double> accept_metropolis;
-  std::vector<double> accept_overrelax;
+  vector<double> mag;
+  vector<double> action;
+  QfeMeasReal demon;
+  QfeMeasReal cluster_size;
+  QfeMeasReal accept_metropolis;
+  QfeMeasReal accept_overrelax;
 
   int n_therm = 1000;
   int n_traj = 20000;
@@ -58,25 +61,25 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_wolff; j++) {
       cluster_size_sum += field.WolffUpdate();
     }
-    cluster_size.push_back(double(cluster_size_sum) / double(N * N));
-    accept_metropolis.push_back(field.Metropolis());
-    accept_overrelax.push_back(field.Overrelax());
-    demon.push_back(field.overrelax_demon);
+    cluster_size.Measure(double(cluster_size_sum) / double(N * N));
+    accept_metropolis.Measure(field.Metropolis());
+    accept_overrelax.Measure(field.Overrelax());
+    demon.Measure(field.overrelax_demon);
 
     if (n % n_skip || n < n_therm) continue;
 
     action.push_back(field.Action());
     mag.push_back(field.MeanPhi());
-    printf("%06d %.12f %+.12f %.4f %.4f %.12f %d\n", \
+    printf("%06d %.12f %+.12f %.4f %.4f %.12f %.4f\n", \
         n, action.back(), mag.back(), \
-        accept_metropolis.back(), \
-        accept_overrelax.back(), demon.back(), \
-        cluster_size_sum);
+        accept_metropolis.last, \
+        accept_overrelax.last, demon.last, \
+        cluster_size.last);
   }
 
-  std::vector<double> mag_abs(mag.size());
-  std::vector<double> mag2(mag.size());
-  std::vector<double> mag4(mag.size());
+  vector<double> mag_abs(mag.size());
+  vector<double> mag2(mag.size());
+  vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
@@ -85,10 +88,10 @@ int main(int argc, char* argv[]) {
     mag4[i] = m2 * m2;
   }
 
-  printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
-  printf("accept_overrelax: %.4f\n", Mean(accept_overrelax));
-  printf("cluster_size/V: %.4f\n", Mean(cluster_size));
-  printf("demon: %.12f (%.12f)\n", Mean(demon), JackknifeMean(demon));
+  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
+  printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
+  printf("cluster_size/V: %.4f\n", cluster_size.Mean());
+  printf("demon: %.12f (%.12f)\n", demon.Mean(), demon.Error());
   printf("action: %.12e (%.12e), %.4f\n", \
       Mean(action), JackknifeMean(action), AutocorrTime(action));
   printf("m: %.12e (%.12e), %.4f\n", \

@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cmath>
+#include <vector>
 #include <map>
 #include "ads2.h"
 #include "phi4.h"
@@ -43,7 +44,7 @@ int main(int argc, char* argv[]) {
   // measurements
   vector<double> mag;
   vector<double> action;
-  vector<double> accept_metropolis;
+  QfeMeasReal accept_metropolis;
 
   // bulk-bulk 2-pt function (all to all)
   vector<int> bins_bb;  // bin for each pair of sites
@@ -70,8 +71,14 @@ int main(int argc, char* argv[]) {
     // printf("%04d %04d %.12f\n", s1, s2, sigma);
     if (sigma > sigma_max) continue;
 
-    // don't include pairs of sites in different time slices
+    // don't include pairs of sites in different time slices (AdS3)
     // if (lattice.t[s1] != lattice.t[s2]) continue;
+
+    // only include sites with the same rho as the first boundary site
+    // if (abs(lattice.z[s1]) - abs(lattice.z[lattice.boundary_sites[0]]) > 1e-6) continue;
+
+    // only include sites with the same spatial position (AdS3)
+    // if (abs(lattice.z[s1] - lattice.z[s2]) > 1e-6) continue;
 
     // get an integer representation of sigma to use as a bin key
     int sigma_int = int(round(sigma / 1.0e-6));
@@ -96,50 +103,13 @@ int main(int argc, char* argv[]) {
   vector<double> two_point_bb_2(sigma_bb.size(), 0.0);
   vector<int> n_meas_bb(sigma_bb.size(), 0);
 
-  // // boundary-boundary 2-pt function (all to all)
-  // // "d" stands for boundary (like the \partial symbol)
-  // size_t n_boundary = lattice.n_boundary;
-  // size_t n_dd = (n_boundary * (n_boundary + 1)) / 2;
-  // vector<int> bins_dd(n_dd);  // bin for each pair of sites
-  // vector<int> s1_dd(n_dd);  // s1 for each pair of sites
-  // vector<int> s2_dd(n_dd);  // s2 for each pair of sites
-  // map<int,int> theta_map;  // map from a theta value to its bin
-  // vector<double> theta_dd;  // theta for each bin
-  //
-  // for (size_t i = 0, s1 = 0, s2 = 0; i < n_dd; i++) {
-  //
-  //   // bin in theta, i.e. pairs of boundary points with theta within
-  //   // 1e-2 * pi of each other are in the same bin
-  //   double theta = lattice.Theta(lattice.boundary_sites[s1], lattice.boundary_sites[s2]);
-  //   int theta_int = int(round(theta / (M_PI * 1.0e-2)));
-  //   if (theta_map.find(theta_int) == theta_map.end()) {
-  //     // new bin
-  //     bins_dd[i] = theta_dd.size();
-  //     theta_map[theta_int] = theta_dd.size();
-  //     theta_dd.push_back(double(theta_int) * M_PI * 1.0e-2);
-  //   } else {
-  //     // bin already exists
-  //     bins_dd[i] = theta_map[theta_int];
-  //   }
-  //
-  //   s1_dd[i] = lattice.boundary_sites[s1];
-  //   s2_dd[i] = lattice.boundary_sites[s2];
-  //   s2++;
-  //   if (s2 == lattice.n_boundary) {
-  //     s2 = 0;
-  //     s1++;
-  //   }
-  // }
-  // vector<double> two_point_dd(theta_dd.size(), 0.0);
-  // vector<int> n_meas_dd(theta_dd.size(), 0);
-
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     double metropolis_sum = 0.0;
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    accept_metropolis.push_back(metropolis_sum);
+    accept_metropolis.Measure(metropolis_sum);
 
     if (n % n_skip || n < n_therm) continue;
 
@@ -155,16 +125,9 @@ int main(int argc, char* argv[]) {
       n_meas_bb[bin]++;
     }
 
-    // // measure boundary-boundary 2-pt functions
-    // for (size_t i = 0; i < n_dd; i++) {
-    //   int bin = bins_dd[i];
-    //   two_point_dd[bin] += field.phi[s1_dd[i]] * field.phi[s2_dd[i]];
-    //   n_meas_dd[bin]++;
-    // }
-
     printf("%06d %.12f %+.12f %.4f\n", \
         n, action.back(), mag.back(), \
-        accept_metropolis.back());
+        accept_metropolis.last);
   }
 
   // print average 2-pt function for each bin
@@ -176,12 +139,6 @@ int main(int argc, char* argv[]) {
     double bb_err = sqrt(bb_var / double(n_meas_bb[i]));
     printf("{%.12e, %.12e, %.12e},\n", sigma_bb[i], bb, bb_err);
   }
-
-  // printf("\ntheta / two_point_dd\n");
-  // for (size_t i = 0; i < theta_dd.size(); i++) {
-  //   printf("{%.12e, %.12e},\n", theta_dd[i], \
-  //       two_point_dd[i] / double(n_meas_dd[i]));
-  // }
 
   // compute magnetic moments
   vector<double> mag_abs(mag.size());
@@ -196,7 +153,7 @@ int main(int argc, char* argv[]) {
   }
 
   // print statistics
-  printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
+  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
   printf("action: %.12e (%.12e), %.4f\n", \
       Mean(action), JackknifeMean(action), AutocorrTime(action));
   printf("m: %.12e (%.12e), %.4f\n", \

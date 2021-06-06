@@ -1,9 +1,12 @@
 // ising_test.cc
 
 #include <cstdio>
+#include <vector>
 #include "lattice.h"
 #include "ising.h"
 #include "statistics.h"
+
+using std::vector;
 
 // for the ising model on a equilateral triangular lattice with no external
 // field, we expect to find a critical point near beta = 0.41. compare with
@@ -38,10 +41,10 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  std::vector<double> mag;
-  std::vector<double> action;
-  std::vector<double> cluster_size;
-  std::vector<double> accept_metropolis;
+  vector<double> mag;
+  vector<double> action;
+  QfeMeasReal cluster_size;
+  QfeMeasReal accept_metropolis;
 
   int n_therm = 1000;
   int n_traj = 20000;
@@ -58,22 +61,22 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    cluster_size.push_back(double(cluster_size_sum) / double(N * N));
-    accept_metropolis.push_back(metropolis_sum);
+    cluster_size.Measure(double(cluster_size_sum) / double(N * N));
+    accept_metropolis.Measure(metropolis_sum);
 
     if (n % n_skip || n < n_therm) continue;
 
     action.push_back(field.Action());
     mag.push_back(field.MeanSpin());
-    printf("%06d %.12f %+.12f %.4f %d\n", \
+    printf("%06d %.12f %+.12f %.4f %.4f\n", \
         n, action.back(), mag.back(), \
-        accept_metropolis.back(), \
-        cluster_size_sum);
+        accept_metropolis.last, \
+        cluster_size.last);
   }
 
-  std::vector<double> mag_abs(mag.size());
-  std::vector<double> mag2(mag.size());
-  std::vector<double> mag4(mag.size());
+  vector<double> mag_abs(mag.size());
+  vector<double> mag2(mag.size());
+  vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
@@ -82,8 +85,8 @@ int main(int argc, char* argv[]) {
     mag4[i] = m2 * m2;
   }
 
-  printf("accept_metropolis: %.4f\n", Mean(accept_metropolis));
-  printf("cluster_size/V: %.4f\n", Mean(cluster_size));
+  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
+  printf("cluster_size/V: %.4f\n", cluster_size.Mean());
   printf("action: %.12e (%.12e), %.4f\n", \
       Mean(action), JackknifeMean(action), AutocorrTime(action));
   printf("m: %.12e (%.12e), %.4f\n", \

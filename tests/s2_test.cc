@@ -8,8 +8,8 @@
 
 int main(int argc, char* argv[]) {
 
-  double musq = 1.8163 * 2;
-  printf("musq: %.4f\n", musq);
+  double msq = -1.8163 * 2;
+  printf("msq: %.4f\n", msq);
 
   double lambda = 1.0;
   printf("lambda: %.4f\n", lambda);
@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   }
   printf("face_area: %.12f (%.12f)\n", face_area.Mean(), face_area.Error());
 
-  QfePhi4 field(&lattice, musq, lambda);
+  QfePhi4 field(&lattice, msq, lambda);
   field.HotStart();
 
   printf("initial action: %.12f\n", field.Action());

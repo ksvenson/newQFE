@@ -16,8 +16,8 @@ int main(int argc, char* argv[]) {
   int q = 7;
   printf("q: %d\n", q);
 
-  double musq = 0.0;
-  printf("musq: %.4f\n", musq);
+  double msq = 0.0;
+  printf("msq: %.4f\n", msq);
 
   double lambda = 0.0;
   printf("lambda: %.4f\n", lambda);
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   printf("boundary sites: %d\n", lattice.n_boundary);
   printf("dummy sites: %d\n", lattice.n_dummy);
 
-  QfePhi4 field(&lattice, musq, lambda);
+  QfePhi4 field(&lattice, msq, lambda);
   field.HotStart();
 
   printf("initial action: %.12f\n", field.Action());

@@ -9,7 +9,7 @@
 class QfePhi4 {
 
 public:
-  QfePhi4(QfeLattice* lattice, double musq, double lambda);
+  QfePhi4(QfeLattice* lattice, double msq, double lambda);
   double Action();
   double MeanPhi();
   void HotStart();
@@ -22,7 +22,7 @@ public:
   std::vector<double> phi;  // scalar field
   std::vector<double> moments;  // magnetic moments
   double lambda;  // bare coupling
-  double musq;  // bare mass squared
+  double msq;  // bare mass squared
 
   double metropolis_z;
   double overrelax_demon;
@@ -30,9 +30,9 @@ public:
   std::vector<int> wolff_cluster;  // array of clustered sites
 };
 
-QfePhi4::QfePhi4(QfeLattice* lattice, double musq, double lambda) {
+QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
   this->lattice = lattice;
-  this->musq = musq;
+  this->msq = msq;
   this->lambda = lambda;
   metropolis_z = 0.5;
   overrelax_demon = 0.0;
@@ -52,12 +52,12 @@ double QfePhi4::Action() {
     action += 0.5 * delta_phi2 * lattice->links[l].wt;
   }
 
-  // musq and lambda contributions
+  // msq and lambda contributions
   for (int s = 0; s < lattice->n_sites; s++) {
     double phi1 = phi[s];
     double phi2 = phi1 * phi1;  // phi^2
     double phi4 = phi2 * phi2;  // phi^4
-    double mass_term = -0.5 * musq * phi2;
+    double mass_term = 0.5 * msq * phi2;
     double interaction_term = lambda * phi4;
     action += (mass_term + interaction_term) * lattice->sites[s].wt;
   }
@@ -113,8 +113,8 @@ double QfePhi4::Metropolis() {
       delta_S += 0.5 * delta_phi2 * link_wt;
     }
 
-    // musq and lambda contributions to the action
-    double mass_term = -0.5 * musq * delta_phi2;
+    // msq and lambda contributions to the action
+    double mass_term = 0.5 * msq * delta_phi2;
     double interaction_term = lambda * delta_phi4;
     delta_S += (mass_term + interaction_term) * site->wt;
 
@@ -153,7 +153,7 @@ double QfePhi4::Overrelax() {
     double phi_old = phi[s];
 
     double numerator = 0.0;
-    double denominator = -musq * site->wt;
+    double denominator = msq * site->wt;
     for (int n = 0; n < site->nn; n++) {
       double link_wt = lattice->links[site->links[n]].wt;
       numerator += link_wt * phi[site->neighbors[n]];

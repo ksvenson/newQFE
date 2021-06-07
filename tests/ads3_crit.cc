@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
   int n_layers = 4;
   int q = 7;
   int Nt = 8;
-  double musq = 1.0;
+  double msq = -1.0;
   double lambda = 1.0;
   int n_therm = 1000;
   int n_traj = 20000;
@@ -36,11 +36,11 @@ int main(int argc, char* argv[]) {
 
   while (true) {
 
-    struct option long_options[] = {
+    const struct option long_options[] = {
       {"n_layers", required_argument, 0, 'N'},
       {"q", required_argument, 0, 'q'},
       {"n_t", required_argument, 0, 'T'},
-      {"musq", required_argument, 0, 'm'},
+      {"msq", required_argument, 0, 'm'},
       {"lambda", required_argument, 0, 'l'},
       {"n_therm", required_argument, 0, 'h'},
       {"n_traj", required_argument, 0, 't'},
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
       case 'N': n_layers = atoi(optarg); break;
       case 'q': q = std::stod(optarg); break;
       case 'T': Nt = atoi(optarg); break;
-      case 'm': musq = std::stod(optarg); break;
+      case 'm': msq = std::stod(optarg); break;
       case 'l': lambda = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
   printf("n_layers: %d\n", n_layers);
   printf("q: %d\n", q);
   printf("Nt: %d\n", Nt);
-  printf("musq: %.4f\n", musq);
+  printf("msq: %.4f\n", msq);
   printf("lambda: %.4f\n", lambda);
   printf("n_therm: %d\n", n_therm);
   printf("n_traj: %d\n", n_traj);
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]) {
         lattice.total_cosh_rho[n]);
   }
 
-  QfePhi4 field(&lattice, musq, lambda);
+  QfePhi4 field(&lattice, msq, lambda);
   field.metropolis_z = metropolis_z;
   field.HotStart();
 
@@ -251,7 +251,7 @@ int main(int argc, char* argv[]) {
   file = fopen("ads3_crit_all.dat", "a");
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
-  fprintf(file, " %.12f", musq);
+  fprintf(file, " %.12f", msq);
   fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2, mag4), \
@@ -265,7 +265,7 @@ int main(int argc, char* argv[]) {
   file = fopen("ads3_crit_bulk.dat", "a");
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
-  fprintf(file, " %.12f", musq);
+  fprintf(file, " %.12f", msq);
   fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_bulk, mag4_bulk), \
@@ -279,7 +279,7 @@ int main(int argc, char* argv[]) {
   file = fopen("ads3_crit_boundary.dat", "a");
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
-  fprintf(file, " %.12f", musq);
+  fprintf(file, " %.12f", msq);
   fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_boundary, mag4_boundary), \

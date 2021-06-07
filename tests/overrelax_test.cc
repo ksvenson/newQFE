@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
   QfeLattice lattice;
   lattice.InitTriangle(N);
 
-  QfePhi4 field(&lattice, 1.2725, 0.25);
+  QfePhi4 field(&lattice, -1.2725, 0.25);
   field.HotStart();
 
   QfeMeasReal demon;

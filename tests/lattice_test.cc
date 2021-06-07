@@ -6,7 +6,7 @@
 #include "statistics.h"
 
 // phi4 theory on a square lattice has a critical point near lambda = 0.25,
-// musq = 1.27 [1]. we set skew to 1.0 to get a square lattice. on a 64^2
+// msq = -1.27 [1]. we set skew to 1.0 to get a square lattice. on a 64^2
 // lattice it takes about 4 wolff cluster sweeps to get a net cluster size
 // roughly equal to the entire lattice. after the cluster update, we perform an
 // overrelaxation sweep and then a metropolis sweep. we take measurements
@@ -14,7 +14,7 @@
 // the 2nd and 4th magnetic moments. with these parameters, we expect the 4th
 // order binder cumulant to be near its critical value of 0.8. we also expect
 // to see a peak in the magnetic susceptibility, which can be seen by varying
-// musq. we can also check that the overralation demon is close to 1.
+// msq. we can also check that the overralation demon is close to 1.
 
 // [1] D. Schaich, W. Loinaz, Phys. Rev. D 79, 056008 (2009).
 
@@ -26,8 +26,8 @@ int main(int argc, char* argv[]) {
   double skew = 1.0;
   printf("skew: %.2f\n", skew);
 
-  double musq = 1.27;
-  printf("musq: %.4f\n", musq);
+  double msq = -1.27;
+  printf("msq: %.4f\n", msq);
 
   double lambda = 0.25;
   printf("lambda: %.4f\n", lambda);
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
   QfeLattice lattice;
   lattice.InitTriangle(N, skew);
 
-  QfePhi4 field(&lattice, musq, lambda);
+  QfePhi4 field(&lattice, msq, lambda);
   field.HotStart();
 
   printf("initial action: %.12f\n", field.Action());

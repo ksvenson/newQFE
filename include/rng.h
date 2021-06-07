@@ -4,11 +4,6 @@
 
 #include <random>
 
-using std::mt19937;
-using std::uniform_real_distribution;
-using std::normal_distribution;
-using std::uniform_int_distribution;
-
 class QfeRng {
 
 public:
@@ -17,7 +12,7 @@ public:
   double RandNormal(double mean = 0.0, double stddev = 1.0);
   int RandInt(int min, int max);
 
-  mt19937 gen;
+  std::mt19937 gen;
 };
 
 QfeRng::QfeRng(int seed) {

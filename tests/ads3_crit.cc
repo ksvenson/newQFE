@@ -1,15 +1,12 @@
 // ads3_crit.cc
 
-#include <cstdio>
-#include <vector>
-#include <string>
 #include <getopt.h>
+#include <cstdio>
+#include <string>
+#include <vector>
 #include "ads3.h"
 #include "phi4.h"
 #include "statistics.h"
-
-using std::vector;
-using std::stod;
 
 int main(int argc, char* argv[]) {
 
@@ -61,41 +58,18 @@ int main(int argc, char* argv[]) {
     if (c == -1) break;
 
     switch (c) {
-      case 'N':
-        n_layers = atoi(optarg);
-        break;
-      case 'q':
-        q = stod(optarg);
-        break;
-      case 'T':
-        Nt = atoi(optarg);
-        break;
-      case 'm':
-        musq = stod(optarg);
-        break;
-      case 'l':
-        lambda = stod(optarg);
-        break;
-      case 'h':
-        n_therm = atoi(optarg);
-        break;
-      case 't':
-        n_traj = atoi(optarg);
-        break;
-      case 's':
-        n_skip = atoi(optarg);
-        break;
-      case 'w':
-        n_wolff = atoi(optarg);
-        break;
-      case 'e':
-        n_metropolis = atoi(optarg);
-        break;
-      case 'z':
-        metropolis_z = stod(optarg);
-        break;
-      default:
-        break;
+      case 'N': n_layers = atoi(optarg); break;
+      case 'q': q = std::stod(optarg); break;
+      case 'T': Nt = atoi(optarg); break;
+      case 'm': musq = std::stod(optarg); break;
+      case 'l': lambda = std::stod(optarg); break;
+      case 'h': n_therm = atoi(optarg); break;
+      case 't': n_traj = atoi(optarg); break;
+      case 's': n_skip = atoi(optarg); break;
+      case 'w': n_wolff = atoi(optarg); break;
+      case 'e': n_metropolis = atoi(optarg); break;
+      case 'z': metropolis_z = std::stod(optarg); break;
+      default: break;
     }
   }
 
@@ -133,10 +107,10 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  vector<double> mag;
-  vector<double> mag_bulk;
-  vector<double> mag_boundary;
-  vector<double> action;
+  std::vector<double> mag;
+  std::vector<double> mag_bulk;
+  std::vector<double> mag_boundary;
+  std::vector<double> action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
   QfeMeasReal accept_overrelax;
@@ -198,9 +172,9 @@ int main(int argc, char* argv[]) {
   printf("action: %.12e (%.12e), %.4f\n", \
       Mean(action), JackknifeMean(action), AutocorrTime(action));
 
-  vector<double> mag_abs(mag.size());
-  vector<double> mag2(mag.size());
-  vector<double> mag4(mag.size());
+  std::vector<double> mag_abs(mag.size());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
@@ -209,9 +183,9 @@ int main(int argc, char* argv[]) {
     mag4[i] = m2 * m2;
   }
 
-  vector<double> mag_abs_bulk(mag_bulk.size());
-  vector<double> mag2_bulk(mag_bulk.size());
-  vector<double> mag4_bulk(mag_bulk.size());
+  std::vector<double> mag_abs_bulk(mag_bulk.size());
+  std::vector<double> mag2_bulk(mag_bulk.size());
+  std::vector<double> mag4_bulk(mag_bulk.size());
   for (int i = 0; i < mag_bulk.size(); i++) {
     double m = mag_bulk[i];
     double m2 = m * m;
@@ -220,9 +194,9 @@ int main(int argc, char* argv[]) {
     mag4_bulk[i] = m2 * m2;
   }
 
-  vector<double> mag_abs_boundary(mag_boundary.size());
-  vector<double> mag2_boundary(mag_boundary.size());
-  vector<double> mag4_boundary(mag_boundary.size());
+  std::vector<double> mag_abs_boundary(mag_boundary.size());
+  std::vector<double> mag2_boundary(mag_boundary.size());
+  std::vector<double> mag4_boundary(mag_boundary.size());
   for (int i = 0; i < mag_boundary.size(); i++) {
     double m = mag_boundary[i];
     double m2 = m * m;
@@ -278,7 +252,7 @@ int main(int argc, char* argv[]) {
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
   fprintf(file, " %.12f", musq);
-  fprintf(file, " %.12f", lambda);
+  fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2, mag4), \
       JackknifeU4(mag2, mag4));
@@ -292,7 +266,7 @@ int main(int argc, char* argv[]) {
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
   fprintf(file, " %.12f", musq);
-  fprintf(file, " %.12f", lambda);
+  fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_bulk, mag4_bulk), \
       JackknifeU4(mag2_bulk, mag4_bulk));
@@ -306,7 +280,7 @@ int main(int argc, char* argv[]) {
   fprintf(file, "%d", n_layers);
   fprintf(file, " %d", Nt);
   fprintf(file, " %.12f", musq);
-  fprintf(file, " %.12f", lambda);
+  fprintf(file, " %.4f", lambda);
   fprintf(file, " %.12e %.12e", \
       U4(mag2_boundary, mag4_boundary), \
       JackknifeU4(mag2_boundary, mag4_boundary));

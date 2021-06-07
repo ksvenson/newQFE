@@ -6,3 +6,10 @@ bin/*
 
 # system files
 .DS_Store
+
+# data files
+*.dat
+*.bin
+
+# bash script files
+*.sh

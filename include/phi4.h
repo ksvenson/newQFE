@@ -2,13 +2,9 @@
 
 #pragma once
 
-#include <vector>
 #include <stack>
+#include <vector>
 #include "lattice.h"
-
-using std::vector;
-using std::fill;
-using std::stack;
 
 class QfePhi4 {
 
@@ -23,15 +19,15 @@ public:
   int WolffUpdate();
 
   QfeLattice* lattice;
-  vector<double> phi;  // scalar field
-  vector<double> moments;  // magnetic moments
+  std::vector<double> phi;  // scalar field
+  std::vector<double> moments;  // magnetic moments
   double lambda;  // bare coupling
   double musq;  // bare mass squared
 
   double metropolis_z;
   double overrelax_demon;
-  vector<bool> is_clustered;  // keeps track of which sites are clustered
-  vector<int> wolff_cluster;  // array of clustered sites
+  std::vector<bool> is_clustered;  // keeps track of which sites are clustered
+  std::vector<int> wolff_cluster;  // array of clustered sites
 };
 
 QfePhi4::QfePhi4(QfeLattice* lattice, double musq, double lambda) {
@@ -84,7 +80,7 @@ void QfePhi4::HotStart() {
 }
 
 void QfePhi4::ColdStart() {
-  fill(phi.begin(), phi.begin() + lattice->n_sites, 0.0);
+  std::fill(phi.begin(), phi.begin() + lattice->n_sites, 0.0);
 }
 
 // metropolis update algorithm
@@ -185,11 +181,11 @@ double QfePhi4::Overrelax() {
 int QfePhi4::WolffUpdate() {
 
   // remove all sites from the cluster
-  fill(is_clustered.begin(), is_clustered.end(), false);
+  std::fill(is_clustered.begin(), is_clustered.end(), false);
   wolff_cluster.clear();
 
   // create the stack
-  stack<int> stack;
+  std::stack<int> stack;
 
   // choose a random site and add it to the cluster
   int s = lattice->rng.RandInt(0, lattice->n_sites - 1);

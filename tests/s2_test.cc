@@ -2,11 +2,9 @@
 
 #include <cstdio>
 #include <vector>
-#include "s2.h"
 #include "phi4.h"
+#include "s2.h"
 #include "statistics.h"
-
-using std::vector;
 
 int main(int argc, char* argv[]) {
 
@@ -41,14 +39,20 @@ int main(int argc, char* argv[]) {
   printf("link_wt_sum: %.12f\n", link_wt_sum);
   printf("link_wt_sq: %.12f\n", link_wt_sq);
 
+  QfeMeasReal face_area;
+  for (int f = 0; f < lattice.n_faces; f++) {
+    face_area.Measure(lattice.FlatArea(f));
+  }
+  printf("face_area: %.12f (%.12f)\n", face_area.Mean(), face_area.Error());
+
   QfePhi4 field(&lattice, musq, lambda);
   field.HotStart();
 
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  vector<double> mag;
-  vector<double> action;
+  std::vector<double> mag;
+  std::vector<double> action;
   QfeMeasReal demon;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
@@ -80,9 +84,9 @@ int main(int argc, char* argv[]) {
         cluster_size.last);
   }
 
-  vector<double> mag_abs(mag.size());
-  vector<double> mag2(mag.size());
-  vector<double> mag4(mag.size());
+  std::vector<double> mag_abs(mag.size());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;

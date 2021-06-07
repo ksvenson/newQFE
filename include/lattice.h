@@ -10,12 +10,6 @@
 #include <vector>
 #include "rng.h"
 
-using std::sort;
-using std::vector;
-using std::stack;
-using std::map;
-using std::string;
-
 #define MAX_SITE_NEIGHBORS 12
 #define MAX_LINK_FACES 3
 #define MAX_FACE_EDGES 4
@@ -51,8 +45,6 @@ public:
   int FindLink(int a, int b);
   int AddLink(int a, int b, double wt);
   int AddFace(int a, int b, int c);
-  virtual void SortFace(vector<int>& links);
-  void UpdateFaces();
   void Refine2D(int n_refine);
   void PrintSites();
   void PrintLinks();
@@ -65,9 +57,9 @@ public:
   int n_links;
   int n_faces;
 
-  vector<QfeSite> sites;
-  vector<QfeLink> links;
-  vector<QfeFace> faces;
+  std::vector<QfeSite> sites;
+  std::vector<QfeLink> links;
+  std::vector<QfeFace> faces;
 
   QfeRng rng;
 };
@@ -234,72 +226,6 @@ int QfeLattice::AddFace(int a, int b, int c) {
 }
 
 /**
- * @brief Sort the links around a face. This function must produce a unique
- * order for any permutation of the set of edges. The default behavior is
- * to sort in ascending order of the edge indices. Subclasses can override
- * this to define an explicit orientation convention for faces.
- */
-
-void QfeLattice::SortFace(vector<int>& edges) {
-  sort(edges.begin(), edges.end());
-}
-
-/**
- * @brief Update the lattice faces based on current sites and links
- */
-
-void QfeLattice::UpdateFaces() {
-
-  // remove all faces
-  faces.clear();
-  for (int l = 0; l < n_links; l++) {
-    links[l].n_faces = 0;
-  }
-
-  // keep track of which faces have been created
-  map<string,bool> face_exists;
-
-  for (int s = 0; s < n_sites; s++) {
-    // loop over all distinct pairs of neighbors
-    for (int n1 = 0, n2 = 1; n1 < (sites[s].nn - 2); n2++) {
-      if (n2 == sites[s].nn) {
-        n1++;
-        n2 = n1 + 1;
-      }
-
-      int s1 = sites[s].neighbors[n1];
-      int s2 = sites[s].neighbors[n2];
-
-      vector<int> edges(3);
-      edges[0] = sites[s].links[n1];
-      edges[1] = sites[s].links[n2];
-      edges[2] = -1;
-
-      // skip if s1 and s2 are not connected
-      for (int n = 0; n < sites[s1].nn; n++) {
-        if (sites[s1].neighbors[n] == s2) {
-          edges[2] = sites[s1].links[n];
-          break;
-        }
-      }
-      if (edges[2] == -1) continue;
-
-      SortFace(edges);
-
-      // create a string as a key for this face
-      char key[50];
-      sprintf(key, "%d_%d_%d", edges[0], edges[1], edges[2]);
-
-      // skip if the face already exists
-      if (face_exists.count(key)) continue;
-      face_exists[key] = true;
-
-      // AddFace(edges, 1.0);
-    }
-  }
-}
-
-/**
  * @brief Refine every face in a 2-dimensional lattice by splitting each link
  * into @p n_refine sublinks and partitioning the face appropriately.
  */
@@ -307,8 +233,8 @@ void QfeLattice::UpdateFaces() {
 void QfeLattice::Refine2D(int n_refine) {
 
   // copy the old links and faces
-  vector<QfeLink> old_links = links;
-  vector<QfeFace> old_faces = faces;
+  std::vector<QfeLink> old_links = links;
+  std::vector<QfeFace> old_faces = faces;
 
   // remove all links and faces
   links.clear();
@@ -336,7 +262,7 @@ void QfeLattice::Refine2D(int n_refine) {
 
   // map from an ordered pair of old sites to an array of new sites running
   // along the old edge between them
-  map<string,vector<int>> edge_sites;
+  std::map<std::string,std::vector<int>> edge_sites;
 
   int s = n_old_sites;
   for (int l = 0; l < old_links.size(); l++) {
@@ -345,7 +271,7 @@ void QfeLattice::Refine2D(int n_refine) {
     int s_a = old_links[l].sites[0];
     int s_b = old_links[l].sites[1];
 
-    vector<int> s_edge;
+    std::vector<int> s_edge;
     s_edge.push_back(s_a);
     for (int n = 1; n < n_refine; n++) {
       InterpolateSite(s, s_a, s_b, double(n) / double(n_refine));
@@ -373,8 +299,8 @@ void QfeLattice::Refine2D(int n_refine) {
     s_corner[1] = old_faces[f].sites[1];
     s_corner[2] = old_faces[f].sites[2];
 
-    vector<int> e_outer[3];
-    vector<int> e_inner[3];
+    std::vector<int> e_outer[3];
+    std::vector<int> e_inner[3];
     char key[50];
     sprintf(key, "%d_%d", s_corner[0], s_corner[1]);
     e_outer[0] = edge_sites[key];
@@ -515,10 +441,10 @@ void QfeLattice::CheckConnectivity() {
   printf("total sites: %d\n", int(sites.size()));
 
   // keep track of which sites are connected (include dummy sites)
-  vector<bool> is_connected(sites.size());
+  std::vector<bool> is_connected(sites.size());
 
   // create the stack
-  stack<int> stack;
+  std::stack<int> stack;
 
   // start with site 0
   stack.push(0);

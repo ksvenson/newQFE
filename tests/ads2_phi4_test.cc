@@ -1,15 +1,12 @@
 // ads2_phi4_test.cc
 
-#include <cstdio>
 #include <cmath>
-#include <vector>
+#include <cstdio>
 #include <map>
+#include <vector>
 #include "ads2.h"
 #include "phi4.h"
 #include "statistics.h"
-
-using std::vector;
-using std::map;
 
 int main(int argc, char* argv[]) {
 
@@ -42,16 +39,16 @@ int main(int argc, char* argv[]) {
   int n_metropolis = 10;
 
   // measurements
-  vector<double> mag;
-  vector<double> action;
+  std::vector<double> mag;
+  std::vector<double> action;
   QfeMeasReal accept_metropolis;
 
   // bulk-bulk 2-pt function (all to all)
-  vector<int> bins_bb;  // bin for each pair of sites
-  vector<int> s1_bb;  // s1 for each pair of sites
-  vector<int> s2_bb;  // s2 for each pair of sites
-  map<int,int> sigma_map;  // map from a sigma value to its bin
-  vector<double> sigma_bb;  // sigma for each bin
+  std::vector<int> bins_bb;  // bin for each pair of sites
+  std::vector<int> s1_bb;  // s1 for each pair of sites
+  std::vector<int> s2_bb;  // s2 for each pair of sites
+  std::map<int,int> sigma_map;  // map from a sigma value to its bin
+  std::vector<double> sigma_bb;  // sigma for each bin
 
   // only include pairs of points that are less than a certain distance apart
   double sigma_max = double(N);
@@ -99,9 +96,9 @@ int main(int argc, char* argv[]) {
   }
   int n_bb = bins_bb.size();  // number of bulk-bulk pairs of sites
   printf("n_bb: %d\n", n_bb);
-  vector<double> two_point_bb(sigma_bb.size(), 0.0);
-  vector<double> two_point_bb_2(sigma_bb.size(), 0.0);
-  vector<int> n_meas_bb(sigma_bb.size(), 0);
+  std::vector<double> two_point_bb(sigma_bb.size(), 0.0);
+  std::vector<double> two_point_bb_2(sigma_bb.size(), 0.0);
+  std::vector<int> n_meas_bb(sigma_bb.size(), 0);
 
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
@@ -141,9 +138,9 @@ int main(int argc, char* argv[]) {
   }
 
   // compute magnetic moments
-  vector<double> mag_abs(mag.size());
-  vector<double> mag2(mag.size());
-  vector<double> mag4(mag.size());
+  std::vector<double> mag_abs(mag.size());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;

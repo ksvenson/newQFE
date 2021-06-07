@@ -5,8 +5,6 @@
 #include <vector>
 #include "ads2.h"
 
-using std::vector;
-
 class QfeLatticeAdS3 : public QfeLatticeAdS2 {
 
 public:
@@ -16,7 +14,7 @@ public:
 
   int Nt;
   double t_scale;  // ratio of temporal to spatial lattice spacing
-  vector<int> t;  // time coordinate of sites
+  std::vector<int> t;  // time coordinate of sites
 };
 
 /**
@@ -58,6 +56,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
   // t_scale = 1.0 / layer_rho[1];
   // t_scale = layer_cosh_rho[1];
   // t_scale = double(n_layers) / (layer_cosh_rho[n_layers] * M_PI);
+  // t_scale = layer_cosh_rho[n_layers];
   // t_scale = total_cosh_rho[n_layers];
   // t_scale = double(2 * n_layers) / (M_PI * layer_rho[n_layers]);
 

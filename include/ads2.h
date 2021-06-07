@@ -2,15 +2,12 @@
 
 #pragma once
 
-#include <vector>
-#include <complex>
 #include <cmath>
+#include <complex>
+#include <vector>
 #include "lattice.h"
 
-using std::vector;
-using std::complex;
-
-typedef complex<double> Complex;
+typedef std::complex<double> Complex;
 const Complex I(0.0, 1.0);
 
 class QfeLatticeAdS2 : public QfeLattice {
@@ -24,24 +21,24 @@ public:
   int n_layers;  // number of layers
   int n_bulk;  // number of bulk sites
   int n_boundary;  // number of boundary sites
-  vector<int> layer_size;  // size of each layer
-  vector<int> layer_offset;  // offset of first site in each layer
+  std::vector<int> layer_size;  // size of each layer
+  std::vector<int> layer_offset;  // offset of first site in each layer
 
-  vector<vector<int>> layer_sites;  // list of sites at each layer
-  vector<int> bulk_sites;  // list of bulk sites
-  vector<int> boundary_sites;  // list of boundary sites
-  vector<int> site_layers;  // layer for each site
+  std::vector<std::vector<int>> layer_sites;  // list of sites at each layer
+  std::vector<int> bulk_sites;  // list of bulk sites
+  std::vector<int> boundary_sites;  // list of boundary sites
+  std::vector<int> site_layers;  // layer for each site
 
   // site coordinates
-  vector<Complex> z;  // complex coordinates on poincaré disc
-  vector<double> r;  // abs(z)
-  vector<double> theta;  // arg(z)
-  vector<double> rho;  // global radial coordinate
-  vector<Complex> u;  // complex coordinates in upper half-plane
+  std::vector<Complex> z;  // complex coordinates on poincaré disc
+  std::vector<double> r;  // abs(z)
+  std::vector<double> theta;  // arg(z)
+  std::vector<double> rho;  // global radial coordinate
+  std::vector<Complex> u;  // complex coordinates in upper half-plane
 
-  vector<double> layer_rho;  // average rho at each layer
-  vector<double> layer_cosh_rho;  // average cosh(rho) at each layer
-  vector<double> total_cosh_rho;  // average cosh(rho) up to each layer
+  std::vector<double> layer_rho;  // average rho at each layer
+  std::vector<double> layer_cosh_rho;  // average cosh(rho) at each layer
+  std::vector<double> total_cosh_rho;  // average cosh(rho) up to each layer
 };
 
 /**

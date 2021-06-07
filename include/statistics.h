@@ -2,10 +2,8 @@
 
 #pragma once
 
-#include <vector>
 #include <cmath>
-
-using std::vector;
+#include <vector>
 
 class QfeMeasReal {
 
@@ -53,7 +51,7 @@ double QfeMeasReal::Error() {
 // TODO: come up with a way to consolidate these so it's not just the same
 //       function over and over again
 
-double Mean(vector<double>& a) {
+double Mean(std::vector<double>& a) {
   double sum = 0.0;
   for (int i = 0; i < a.size(); i++) {
     sum += a[i];
@@ -61,31 +59,31 @@ double Mean(vector<double>& a) {
   return sum / double(a.size());
 }
 
-double LogMean(vector<double>& a) {
+double LogMean(std::vector<double>& a) {
   return log(Mean(a));
 }
 
-double U4(vector<double>& m2, vector<double>& m4) {
+double U4(std::vector<double>& m2, std::vector<double>& m4) {
   double m2_mean = Mean(m2);
   double m4_mean = Mean(m4);
 
   return 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
 }
 
-double Susceptibility(vector<double>& m2, vector<double>& m) {
+double Susceptibility(std::vector<double>& m2, std::vector<double>& m) {
   double m2_mean = Mean(m2);
   double m_mean = Mean(m);
 
   return m2_mean - m_mean * m_mean;
 }
 
-double JackknifeMean(vector<double>& a) {
+double JackknifeMean(std::vector<double>& a) {
   int n = a.size();
 	double mean = Mean(a);
 	double err = 0.0;
 
 	for (int i = 0; i < n; i++) {
-    vector<double> a_del = a;
+    std::vector<double> a_del = a;
     a_del.erase(a_del.begin() + i);
     double diff = Mean(a_del) - mean;
     err += diff * diff;
@@ -95,13 +93,13 @@ double JackknifeMean(vector<double>& a) {
 	return err;
 }
 
-double JackknifeLogMean(vector<double>& a) {
+double JackknifeLogMean(std::vector<double>& a) {
   int n = a.size();
 	double mean = LogMean(a);
 	double err = 0.0;
 
 	for (int i = 0; i < n; i++) {
-    vector<double> a_del = a;
+    std::vector<double> a_del = a;
     a_del.erase(a_del.begin() + i);
     double diff = LogMean(a_del) - mean;
     err += diff * diff;
@@ -111,14 +109,14 @@ double JackknifeLogMean(vector<double>& a) {
 	return err;
 }
 
-double JackknifeU4(vector<double>& m2, vector<double>& m4) {
+double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4) {
   int n = m2.size();
 	double mean = U4(m2, m4);
 	double err = 0.0;
 
 	for (int i = 0; i < n; i++) {
-    vector<double> m2_del = m2;
-    vector<double> m4_del = m4;
+    std::vector<double> m2_del = m2;
+    std::vector<double> m4_del = m4;
     m2_del.erase(m2_del.begin() + i);
     m4_del.erase(m4_del.begin() + i);
     double diff = U4(m2_del, m4_del) - mean;
@@ -129,14 +127,14 @@ double JackknifeU4(vector<double>& m2, vector<double>& m4) {
 	return err;
 }
 
-double JackknifeSusceptibility(vector<double>& m2, vector<double>& m) {
+double JackknifeSusceptibility(std::vector<double>& m2, std::vector<double>& m) {
   int n = m2.size();
 	double mean = Susceptibility(m2, m);
 	double err = 0.0;
 
 	for (int i = 0; i < n; i++) {
-    vector<double> m2_del = m2;
-    vector<double> m_del = m;
+    std::vector<double> m2_del = m2;
+    std::vector<double> m_del = m;
     m2_del.erase(m2_del.begin() + i);
     m_del.erase(m_del.begin() + i);
     double diff = Susceptibility(m2_del, m_del) - mean;
@@ -147,7 +145,7 @@ double JackknifeSusceptibility(vector<double>& m2, vector<double>& m) {
 	return err;
 }
 
-double AutocorrGamma(vector<double>& a, int n) {
+double AutocorrGamma(std::vector<double>& a, int n) {
   int N = a.size();
   double result = 0.0;
   double mean = Mean(a);
@@ -166,7 +164,7 @@ double AutocorrGamma(vector<double>& a, int n) {
   return result / double(end - start);
 }
 
-double AutocorrTime(vector<double>& a) {
+double AutocorrTime(std::vector<double>& a) {
   double Gamma0 = AutocorrGamma(a, 0);
   double result = 0.5 * Gamma0;
 

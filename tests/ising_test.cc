@@ -2,11 +2,8 @@
 
 #include <cstdio>
 #include <vector>
-#include "lattice.h"
 #include "ising.h"
 #include "statistics.h"
-
-using std::vector;
 
 // for the ising model on a equilateral triangular lattice with no external
 // field, we expect to find a critical point near beta = 0.41. compare with
@@ -41,8 +38,8 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  vector<double> mag;
-  vector<double> action;
+  std::vector<double> mag;
+  std::vector<double> action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
 
@@ -74,9 +71,9 @@ int main(int argc, char* argv[]) {
         cluster_size.last);
   }
 
-  vector<double> mag_abs(mag.size());
-  vector<double> mag2(mag.size());
-  vector<double> mag4(mag.size());
+  std::vector<double> mag_abs(mag.size());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;

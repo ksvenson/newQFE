@@ -2,11 +2,8 @@
 
 #include <cstdio>
 #include <vector>
-#include "lattice.h"
 #include "phi4.h"
 #include "statistics.h"
-
-using std::vector;
 
 // phi4 theory on a square lattice has a critical point near lambda = 0.25,
 // musq = 1.27 [1]. we set skew to 1.0 to get a square lattice. on a 64^2
@@ -44,8 +41,8 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   // measurements
-  vector<double> mag;
-  vector<double> action;
+  std::vector<double> mag;
+  std::vector<double> action;
   QfeMeasReal demon;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
@@ -77,9 +74,9 @@ int main(int argc, char* argv[]) {
         cluster_size.last);
   }
 
-  vector<double> mag_abs(mag.size());
-  vector<double> mag2(mag.size());
-  vector<double> mag4(mag.size());
+  std::vector<double> mag_abs(mag.size());
+  std::vector<double> mag2(mag.size());
+  std::vector<double> mag4(mag.size());
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;

@@ -2,13 +2,9 @@
 
 #pragma once
 
-#include <vector>
 #include <stack>
+#include <vector>
 #include "lattice.h"
-
-using std::vector;
-using std::fill;
-using std::stack;
 
 class QfeIsing {
 
@@ -22,11 +18,11 @@ public:
   int WolffUpdate();
 
   QfeLattice* lattice;
-  vector<double> spin;  // Z2 field
+  std::vector<double> spin;  // Z2 field
   double beta;  // bare coupling
 
-  vector<bool> is_clustered;  // keeps track of which sites are clustered
-  vector<int> wolff_cluster;  // array of clustered sites
+  std::vector<bool> is_clustered;  // keeps track of which sites are clustered
+  std::vector<int> wolff_cluster;  // array of clustered sites
 };
 
 QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
@@ -65,7 +61,7 @@ void QfeIsing::HotStart() {
 }
 
 void QfeIsing::ColdStart() {
-  fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
+  std::fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
 }
 
 // metropolis update algorithm
@@ -100,11 +96,11 @@ double QfeIsing::Metropolis() {
 int QfeIsing::WolffUpdate() {
 
   // remove all sites from the cluster
-  fill(is_clustered.begin(), is_clustered.end(), false);
+  std::fill(is_clustered.begin(), is_clustered.end(), false);
   wolff_cluster.clear();
 
   // create the stack
-  stack<int> stack;
+  std::stack<int> stack;
 
   // choose a random site and add it to the cluster
   int s = lattice->rng.RandInt(0, lattice->n_sites - 1);
@@ -130,7 +126,7 @@ int QfeIsing::WolffUpdate() {
       // skip if sign bits don't match
       if (signbit(value) != signbit(spin[s])) continue;
 
-      double prob = 1 - exp(-2.0 * beta * link_wt);
+      double prob = 1.0 - exp(-2.0 * beta * link_wt);
       if (lattice->rng.RandReal() < prob) {
         // add the site to the cluster
         wolff_cluster.push_back(s);

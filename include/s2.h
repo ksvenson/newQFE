@@ -3,9 +3,8 @@
 #pragma once
 
 #include <vector>
+#include <Eigen/Dense>
 #include "lattice.h"
-
-using std::vector;
 
 class QfeLatticeS2 : public QfeLattice {
 
@@ -19,20 +18,21 @@ public:
   double EdgeLength(int l);
   double FlatArea(int f);
   void UpdateWeights();
-
-  int q;  // number of triangles meeting at corner sites
+  void PrintCoordinates();
 
   // site coordinates
-  vector<double> x;
-  vector<double> y;
-  vector<double> z;
-  vector<double> cos_theta;
-  vector<double> phi;
-
+  std::vector<Eigen::Vector3d> r;
+  std::vector<double> theta;
+  std::vector<double> phi;
 };
 
+/**
+ * @brief Create an unrefined discretization of S2 with @p q links meeting
+ * at each site. Valid values for @p q are 3, 4, and 5 for
+ * a tetrahedron, octahedron, and icosahedron, respectively.
+ */
+
 QfeLatticeS2::QfeLatticeS2(int q) {
-  this->q = q;
 
   if (q == 3) {
 
@@ -51,10 +51,10 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     }
 
     // set coordinates
-    x[0] =  A0; y[0] =  A0; z[0] =  A5;
-    x[1] =  A4; y[1] =  A0; z[1] = -A1;
-    x[2] = -A2; y[2] =  A3; z[2] = -A1;
-    x[3] = -A2; y[3] = -A3; z[3] = -A1;
+    r[0] = Eigen::Vector3d( A0,  A0,  A5);
+    r[1] = Eigen::Vector3d( A4,  A0, -A1);
+    r[2] = Eigen::Vector3d(-A2,  A3, -A1);
+    r[3] = Eigen::Vector3d(-A2, -A3, -A1);
 
     // add faces (4)
     faces.clear();
@@ -63,14 +63,6 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     AddFace(0, 2, 3);
     AddFace(0, 3, 1);
     AddFace(1, 3, 2);
-
-    // // add links (6)
-    // AddLink(0, 1, 1.0);
-    // AddLink(0, 2, 1.0);
-    // AddLink(0, 3, 1.0);
-    // AddLink(1, 2, 1.0);
-    // AddLink(2, 3, 1.0);
-    // AddLink(3, 1, 1.0);
 
   } else if (q == 4) {
 
@@ -82,12 +74,12 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     }
 
     // set coordinates
-    x[0] =  0.0; y[0] =  0.0; z[0] =  1.0;
-    x[1] =  1.0; y[1] =  0.0; z[1] =  0.0;
-    x[2] =  0.0; y[2] =  1.0; z[2] =  0.0;
-    x[3] = -1.0; y[3] =  0.0; z[3] =  0.0;
-    x[4] =  0.0; y[4] = -1.0; z[4] =  0.0;
-    x[5] =  0.0; y[5] =  0.0; z[5] = -1.0;
+    r[0] = Eigen::Vector3d( 0.0,  0.0,  1.0);
+    r[1] = Eigen::Vector3d( 1.0,  0.0,  0.0);
+    r[2] = Eigen::Vector3d( 0.0,  1.0,  0.0);
+    r[3] = Eigen::Vector3d(-1.0,  0.0,  0.0);
+    r[4] = Eigen::Vector3d( 0.0, -1.0,  0.0);
+    r[5] = Eigen::Vector3d( 0.0,  0.0, -1.0);
 
     // add faces (8)
     faces.clear();
@@ -100,21 +92,6 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     AddFace(2, 5, 3);
     AddFace(3, 5, 4);
     AddFace(4, 5, 1);
-
-    // // add links (12)
-    // links.clear();
-    // AddLink(0, 1, 1.0);
-    // AddLink(0, 2, 1.0);
-    // AddLink(0, 3, 1.0);
-    // AddLink(0, 4, 1.0);
-    // AddLink(1, 2, 1.0);
-    // AddLink(2, 3, 1.0);
-    // AddLink(3, 4, 1.0);
-    // AddLink(4, 1, 1.0);
-    // AddLink(1, 5, 1.0);
-    // AddLink(2, 5, 1.0);
-    // AddLink(3, 5, 1.0);
-    // AddLink(4, 5, 1.0);
 
   } else if (q == 5) {
 
@@ -135,18 +112,18 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     }
 
     // set coordinates
-    x[0]  =  C0; y[0]  =  C0; z[0]  =  C7;
-    x[1]  =  C6; y[1]  =  C0; z[1]  =  C2;
-    x[2]  =  C1; y[2]  =  C5; z[2]  =  C2;
-    x[3]  = -C4; y[3]  =  C3; z[3]  =  C2;
-    x[4]  = -C4; y[4]  = -C3; z[4]  =  C2;
-    x[5]  =  C1; y[5]  = -C5; z[5]  =  C2;
-    x[6]  =  C4; y[6]  = -C3; z[6]  = -C2;
-    x[7]  =  C4; y[7]  =  C3; z[7]  = -C2;
-    x[8]  = -C1; y[8]  =  C5; z[8]  = -C2;
-    x[9]  = -C6; y[9]  =  C0; z[9]  = -C2;
-    x[10] = -C1; y[10] = -C5; z[10] = -C2;
-    x[11] =  C0; y[11] =  C0; z[11] = -C7;
+    r[0]  = Eigen::Vector3d( C0,  C0,  C7);
+    r[1]  = Eigen::Vector3d( C6,  C0,  C2);
+    r[2]  = Eigen::Vector3d( C1,  C5,  C2);
+    r[3]  = Eigen::Vector3d(-C4,  C3,  C2);
+    r[4]  = Eigen::Vector3d(-C4, -C3,  C2);
+    r[5]  = Eigen::Vector3d( C1, -C5,  C2);
+    r[6]  = Eigen::Vector3d( C4, -C3, -C2);
+    r[7]  = Eigen::Vector3d( C4,  C3, -C2);
+    r[8]  = Eigen::Vector3d(-C1,  C5, -C2);
+    r[9]  = Eigen::Vector3d(-C6,  C0, -C2);
+    r[10] = Eigen::Vector3d(-C1, -C5, -C2);
+    r[11] = Eigen::Vector3d( C0,  C0, -C7);
 
     // add faces (20)
     faces.clear();
@@ -172,39 +149,6 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     AddFace(9, 11, 10);
     AddFace(10, 11, 6);
 
-    // // add links (30)
-    // links.clear();
-    // AddLink(0, 1, 1.0);
-    // AddLink(0, 2, 1.0);
-    // AddLink(0, 3, 1.0);
-    // AddLink(0, 4, 1.0);
-    // AddLink(0, 5, 1.0);
-    // AddLink(1, 2, 1.0);
-    // AddLink(2, 3, 1.0);
-    // AddLink(3, 4, 1.0);
-    // AddLink(4, 5, 1.0);
-    // AddLink(5, 1, 1.0);
-    // AddLink(1, 6, 1.0);
-    // AddLink(1, 7, 1.0);
-    // AddLink(2, 7, 1.0);
-    // AddLink(2, 8, 1.0);
-    // AddLink(3, 8, 1.0);
-    // AddLink(3, 9, 1.0);
-    // AddLink(4, 9, 1.0);
-    // AddLink(4, 10, 1.0);
-    // AddLink(5, 10, 1.0);
-    // AddLink(5, 6, 1.0);
-    // AddLink(6, 7, 1.0);
-    // AddLink(7, 8, 1.0);
-    // AddLink(8, 9, 1.0);
-    // AddLink(9, 10, 1.0);
-    // AddLink(10, 6, 1.0);
-    // AddLink(6, 11, 1.0);
-    // AddLink(7, 11, 1.0);
-    // AddLink(8, 11, 1.0);
-    // AddLink(9, 11, 1.0);
-    // AddLink(10, 11, 1.0);
-
   } else {
     printf("S2 with q = %d not implemented\n", q);
   }
@@ -216,17 +160,25 @@ QfeLatticeS2::QfeLatticeS2(int q) {
 
 void QfeLatticeS2::ResizeSites(int n_sites, int n_dummy) {
   QfeLattice::ResizeSites(n_sites, n_dummy);
-  x.resize(n_sites + n_dummy);
-  y.resize(n_sites + n_dummy);
-  z.resize(n_sites + n_dummy);
-  cos_theta.resize(n_sites + n_dummy);
+  r.resize(n_sites + n_dummy);
+  theta.resize(n_sites + n_dummy);
   phi.resize(n_sites + n_dummy);
 }
 
+/**
+ * @brief Interpolate coordinates partway between two sites.
+ */
+
 void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
-  x[s] = x[s_a] * (1.0 - k) + x[s_b] * k;
-  y[s] = y[s_a] * (1.0 - k) + y[s_b] * k;
-  z[s] = z[s_a] * (1.0 - k) + z[s_b] * k;
+
+  // // interpolate along a spherical geodesic
+  // Eigen::Vector3d p = r[s_a].cross(r[s_b]).normalized();
+  // double psi = acos(r[s_a].dot(r[s_b])) * k;
+  // r[s] = r[s_a] * cos(psi) + p.cross(r[s_a]) * sin(psi) + \
+  //     p * p.dot(r[s_a]) * (1.0 - cos(psi));
+
+  // interpolate along a flat line
+  r[s] = r[s_a] * (1.0 - k) + r[s_b] * k;
 }
 
 /**
@@ -235,15 +187,9 @@ void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
 
 void QfeLatticeS2::Inflate() {
   for (int s = 0; s < n_sites; s++) {
-    double x_s = x[s];
-    double y_s = y[s];
-    double z_s = z[s];
-    double r = sqrt(x_s * x_s + y_s * y_s + z_s * z_s);
-    x[s] /= r;
-    y[s] /= r;
-    z[s] /= r;
-    cos_theta[s] = z[s];
-    phi[s] = atan2(y[s], x[s]);
+    r[s].normalize();
+    theta[s] = acos(r[s].z());
+    phi[s] = atan2(r[s].y(), r[s].x());
   }
 }
 
@@ -254,10 +200,8 @@ void QfeLatticeS2::Inflate() {
 double QfeLatticeS2::EdgeSquared(int l) {
   int s_a = links[l].sites[0];
   int s_b = links[l].sites[1];
-  double dx = x[s_a] - x[s_b];
-  double dy = y[s_a] - y[s_b];
-  double dz = z[s_a] - z[s_b];
-  return dx * dx + dy * dy + dz * dz;
+  Eigen::Vector3d dr = r[s_a] - r[s_b];
+  return dr.squaredNorm();
 }
 
 /**
@@ -334,7 +278,7 @@ void QfeLatticeS2::UpdateWeights() {
     links[l].wt /= link_wt_norm;
   }
 
-  // normalize link weights to 1
+  // normalize site weights to 1
   double site_wt_sum = 0.0;
   for (int s = 0; s < n_sites; s++) {
     site_wt_sum += sites[s].wt;
@@ -344,5 +288,16 @@ void QfeLatticeS2::UpdateWeights() {
 
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt /= site_wt_norm;
+  }
+}
+
+/**
+ * @brief Print the cartesian coordinates of the sites. This is helpful
+ * for making plots in e.g. Mathematica.
+ */
+
+void QfeLatticeS2::PrintCoordinates() {
+  for (int s = 0; s < n_sites; s++) {
+    printf("{%.12f, %.12f, %.12f},\n", r[s].x(), r[s].y(), r[s].z());
   }
 }

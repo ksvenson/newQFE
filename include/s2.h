@@ -2,9 +2,15 @@
 
 #pragma once
 
+#include <complex>
 #include <vector>
+#include <map>
+#include <string>
+#include <boost/math/special_functions/spherical_harmonic.hpp>
 #include <Eigen/Dense>
 #include "lattice.h"
+
+typedef std::complex<double> Complex;
 
 class QfeLatticeS2 : public QfeLattice {
 
@@ -12,18 +18,26 @@ public:
 
   QfeLatticeS2(int q = 5);
   void ResizeSites(int n_sites, int n_dummy = 0);
+  void LoopRefine(int n_refine);
   void InterpolateSite(int s, int s_a, int s_b, double k);
   void Inflate();
+  void UpdateAntipodes();
   double EdgeSquared(int l);
   double EdgeLength(int l);
   double FlatArea(int f);
   void UpdateWeights();
+  void UpdateYlm(int l_max);
+  Complex GetYlm(int s, int l, int m);
+  double CosTheta(int s1, int s2);
   void PrintCoordinates();
 
   // site coordinates
   std::vector<Eigen::Vector3d> r;
-  std::vector<double> theta;
-  std::vector<double> phi;
+  std::vector<std::vector<Complex>> ylm;  // spherical harmonics
+  std::vector<int> antipode;  // antipode of each site (0 by default)
+  std::vector<int> unique_id;  // unique id for each site
+  std::vector<double> unique_wt;  // list of unique site weights
+  int n_unique;
 };
 
 /**
@@ -34,15 +48,13 @@ public:
 
 QfeLatticeS2::QfeLatticeS2(int q) {
 
+  assert(q >= 3 && q <= 5);
+  n_unique = 1;
+
   if (q == 3) {
 
     // tetrahedron
-    const double A0 = 0.0L;
-    const double A1 = 0.333333333333333333333333333333L;
-    const double A2 = 0.471404520791031682933896241403L;
-    const double A3 = 0.816496580927726032732428024902L;
-    const double A4 = 0.942809041582063365867792482806L;
-    const double A5 = 1.0L;
+    const double A0 = 0.577350269189625764509148780502L;  // 1/sqrt(3)
 
     ResizeSites(4);
     for (int s = 0; s < n_sites; s++) {
@@ -51,10 +63,10 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     }
 
     // set coordinates
-    r[0] = Eigen::Vector3d( A0,  A0,  A5);
-    r[1] = Eigen::Vector3d( A4,  A0, -A1);
-    r[2] = Eigen::Vector3d(-A2,  A3, -A1);
-    r[3] = Eigen::Vector3d(-A2, -A3, -A1);
+    r[0] = Eigen::Vector3d( A0,  A0,  A0);
+    r[1] = Eigen::Vector3d(-A0, -A0,  A0);
+    r[2] = Eigen::Vector3d( A0, -A0, -A0);
+    r[3] = Eigen::Vector3d(-A0,  A0, -A0);
 
     // add faces (4)
     faces.clear();
@@ -150,7 +162,7 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     AddFace(10, 11, 6);
 
   } else {
-    printf("S2 with q = %d not implemented\n", q);
+    fprintf(stderr, "S2 with q = %d not implemented\n", q);
   }
 }
 
@@ -161,23 +173,155 @@ QfeLatticeS2::QfeLatticeS2(int q) {
 void QfeLatticeS2::ResizeSites(int n_sites, int n_dummy) {
   QfeLattice::ResizeSites(n_sites, n_dummy);
   r.resize(n_sites + n_dummy);
-  theta.resize(n_sites + n_dummy);
-  phi.resize(n_sites + n_dummy);
+  ylm.resize(n_sites + n_dummy);
+  antipode.resize(n_sites + n_dummy, 0);
+  unique_id.resize(n_sites + n_dummy, 0);
 }
 
 /**
- * @brief Interpolate coordinates partway between two sites.
+ * @brief Refine all triangles on the lattice according to the procedure
+ * defined in [1]. Each triangle in the original lattice will be split into
+ * 2^(@p n_refine) new triangles. This procedure does not project the
+ * new sites onto a unit sphere, though it does produce a mesh which is
+ * closer to a unit sphere than flat refinement.
+ *
+ * [1] C. Loop, Smooth Subdivision Surfaces based on Triangles, 1987
+ */
+
+void QfeLatticeS2::LoopRefine(int n_refine) {
+
+  const double loop_alpha[] = {
+    1.0,
+    0.765625,
+    0.390625,
+    0.4375,
+    0.515625,
+    0.57953390537108553502L,
+    0.625,
+    0.65682555866237771184L,
+    0.67945752147247766083L,
+    0.69593483863689995500L
+  };
+
+  const double loop_beta[] = {
+    1.0,
+    0.61538461538461538462L,
+    0.38095238095238095238L,
+    0.4,
+    0.43636363636363636364L,
+    0.47142172687440284144L,
+    0.5,
+    0.52215726210132291576L,
+    0.53914751661736415310L,
+    0.55222977312995349577L
+  };
+
+  const double* beta_nn = loop_alpha;
+
+  for (int i = 0; i <= n_refine; i++) {
+
+    if (i == n_refine) beta_nn = loop_beta;
+
+    // set coordinates of old sites
+    std::vector<Eigen::Vector3d> old_r = r;
+    for (int s = 0; s < n_sites; s++) {
+      Eigen::Vector3d r_sum = Eigen::Vector3d::Zero();
+      int nn = sites[s].nn;
+      for (int n = 0; n < nn; n++) {
+        r_sum += old_r[sites[s].neighbors[n]];
+      }
+
+      double beta = beta_nn[nn];
+      r[s] = beta * old_r[s] + r_sum * (1.0 - beta) / double(nn);
+    }
+
+    if (i == n_refine) break;
+
+    // copy the old links and faces
+    std::vector<QfeLink> old_links = links;
+    std::vector<QfeFace> old_faces = faces;
+
+    // remove all links and faces
+    links.clear();
+    n_links = 0;
+    faces.clear();
+    n_faces = 0;
+
+    // create new sites
+    int n_old_sites = n_sites;
+    ResizeSites(n_sites + old_links.size());
+
+    // set coordinates for edge sites
+    for (int l = 0; l < old_links.size(); l++) {
+
+      // get the two connected sites
+      int s1 = old_links[l].sites[0];
+      int s2 = old_links[l].sites[1];
+      int s3 = s1;
+      int s4 = s2;
+
+      // find the other two adjacent sites
+      int f1 = old_links[l].faces[0];
+      int f2 = old_links[l].faces[1];
+
+      for (int e = 0; e < 3; e++) {
+        s3 = old_faces[f1].sites[e];
+        if (s3 != s1 && s3 != s2) break;
+      }
+      for (int e = 0; e < 3; e++) {
+        s4 = old_faces[f2].sites[e];
+        if (s4 != s1 && s4 != s2) break;
+      }
+
+      r[n_old_sites + l] = 0.125 * (3.0 * (old_r[s1] + old_r[s2]) + old_r[s3] + old_r[s4]);
+    }
+
+    // remove old neighbors
+    for (int s = 0; s < n_sites; s++) {
+      sites[s].nn = 0;
+    }
+
+    // create new faces
+    for (int f = 0; f < old_faces.size(); f++) {
+
+      // old sites
+      int s1 = old_faces[f].sites[0];
+      int s2 = old_faces[f].sites[1];
+      int s3 = old_faces[f].sites[2];
+
+      // new sites on old edges
+      int s4 = old_faces[f].edges[0] + n_old_sites;
+      int s5 = old_faces[f].edges[1] + n_old_sites;
+      int s6 = old_faces[f].edges[2] + n_old_sites;
+
+      // add 4 new faces with new links
+      AddFace(s1, s6, s4);
+      AddFace(s2, s4, s5);
+      AddFace(s3, s5, s6);
+      AddFace(s4, s6, s5);
+    }
+  }
+}
+
+/**
+ * @brief Set the position of site @p s by interpolating between sites @p s_a
+ * and @p s_b. The parameter @p k is a value between 0 and 1 that determines
+ * how far from site @p s_a to put site @p s, with values of 0 and 1 giving
+ * the coordinates of site a and site b, respectively.
+ *
+ * When refining triangles on S2, it might seem that interpolating along
+ * spherical geodesics would give the most uniform tesselation. However, it
+ * can be shown that interpolating in this way gives three different results
+ * depending on which axis of the triangle is chosen for the interpolation.
+ * Therefore, we interpolate along flat lines in the embedding space. This
+ * eliminates the ambiguity in choosing an axis of the triangle, but
+ * requires that the interpolated sites must be subsequently projected onto
+ * the sphere.
  */
 
 void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
 
-  // // interpolate along a spherical geodesic
-  // Eigen::Vector3d p = r[s_a].cross(r[s_b]).normalized();
-  // double psi = acos(r[s_a].dot(r[s_b])) * k;
-  // r[s] = r[s_a] * cos(psi) + p.cross(r[s_a]) * sin(psi) + \
-  //     p * p.dot(r[s_a]) * (1.0 - cos(psi));
-
-  // interpolate along a flat line
+  // interpolate along a flat line in the embedding space
   r[s] = r[s_a] * (1.0 - k) + r[s_b] * k;
 }
 
@@ -186,10 +330,49 @@ void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
  */
 
 void QfeLatticeS2::Inflate() {
+
+  std::map<std::string, int> antipode_map;
   for (int s = 0; s < n_sites; s++) {
     r[s].normalize();
-    theta[s] = acos(r[s].z());
-    phi[s] = atan2(r[s].y(), r[s].x());
+  }
+}
+
+/**
+ * @brief Identify each site's antipode, i.e. for a site with position r,
+ * find the site which has position -r. A lattice with a tetrahedron base
+ * (q = 3) does not have an antipode for every site.
+ */
+
+void QfeLatticeS2::UpdateAntipodes() {
+
+  std::map<std::string, int> antipode_map;
+  for (int s = 0; s < n_sites; s++) {
+
+    // find antipode
+    int x_int = int(round(r[s].x() * 1.0e9));
+    int y_int = int(round(r[s].y() * 1.0e9));
+    int z_int = int(round(r[s].z() * 1.0e9));
+    char key[50];  // keys should be about 32 bytes long
+    sprintf(key, "%+d_%+d_%+d", x_int, y_int, z_int);
+    char anti_key[50];
+    sprintf(anti_key, "%+d_%+d_%+d", -x_int, -y_int, -z_int);
+
+    if (antipode_map.find(anti_key) != antipode_map.end()) {
+      // antipode found in map
+      int a = antipode_map[anti_key];
+      antipode[s] = a;
+      antipode[a] = s;
+      antipode_map.erase(anti_key);
+    } else {
+      // antipode not found yet
+      antipode_map[key] = s;
+    }
+  }
+
+  if (antipode_map.size()) {
+    // print error message if there are any unpaired sites
+    fprintf(stderr, "no antipode found for %lu/%d sites\n", \
+        antipode_map.size(), n_sites);
   }
 }
 
@@ -225,7 +408,8 @@ double QfeLatticeS2::FlatArea(int f) {
 }
 
 /**
- * @brief Update site and link weights based on vertex coordinates.
+ * @brief Update site and link weights based on vertex coordinates. Sort
+ * all sites into groups with the same weight.
  */
 
 void QfeLatticeS2::UpdateWeights() {
@@ -289,6 +473,86 @@ void QfeLatticeS2::UpdateWeights() {
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt /= site_wt_norm;
   }
+
+  // sort sites into groups with the same weight
+  std::map<int, int> wt_map;
+  unique_wt.resize(0);
+  n_unique = 0;
+
+  for (int s = 0; s < n_sites; s++) {
+    double wt = sites[s].wt;
+    int wt_key = int(round(wt * 1.0e9));
+    int id = n_unique;
+    if (wt_map.find(wt_key) != wt_map.end()) {
+      // id already exists
+      id = wt_map[wt_key];
+    } else {
+      // new id
+      unique_wt.push_back(wt);
+      wt_map[wt_key] = n_unique;
+      n_unique++;
+    }
+    unique_id[s] = id;
+  }
+}
+
+/**
+ * @brief Update spherical harmonic values at each site, up to
+ * a maximum l eigenvalue of @p l_max
+ */
+
+void QfeLatticeS2::UpdateYlm(int l_max) {
+
+  int n_ylm = ((l_max + 1) * (l_max + 2)) / 2;
+  using boost::math::spherical_harmonic;
+
+  for (int s = 0; s < n_sites; s++) {
+    ylm[s].resize(n_ylm);
+    double theta = acos(r[s].z());
+    double phi = atan2(r[s].y(), r[s].x());
+
+    for (int i = 0, l = 0, m = 0; i < n_ylm; i++, m++) {
+      if (m > l) {
+        m = 0;
+        l++;
+      }
+      assert(i < n_ylm);
+      ylm[s][i] = spherical_harmonic(l, m, theta, phi);
+    }
+  }
+}
+
+/**
+ * @brief Get the @p l, @p m spherical harmonic at site @p s.
+ */
+
+Complex QfeLatticeS2::GetYlm(int s, int l, int m) {
+
+  int abs_m = abs(m);
+  assert(abs_m <= l);
+
+  int i = (l * (l + 1)) / 2 + abs_m;
+  assert(i < ylm[s].size());
+  Complex y = ylm[s][i];
+
+  if (m < 0) {
+    y = conj(y);
+    if (abs_m & 1) {
+      y *= -1;
+    }
+  }
+
+  return y;
+}
+
+/**
+ * @brief Return cosine of the angle between sites @p s1 and @p s2. This
+ * function assumes that the coordinates have been projected onto the
+ * unit sphere.
+ */
+
+double QfeLatticeS2::CosTheta(int s1, int s2) {
+  return r[s1].dot(r[s2]);
 }
 
 /**
@@ -297,7 +561,9 @@ void QfeLatticeS2::UpdateWeights() {
  */
 
 void QfeLatticeS2::PrintCoordinates() {
+  printf("{");
   for (int s = 0; s < n_sites; s++) {
-    printf("{%.12f, %.12f, %.12f},\n", r[s].x(), r[s].y(), r[s].z());
+    printf("{%.12f,%.12f,%.12f}", r[s].x(), r[s].y(), r[s].z());
+    printf("%c\n", s == (n_sites - 1) ? '}' : ',');
   }
 }

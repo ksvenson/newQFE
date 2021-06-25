@@ -181,7 +181,7 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
     r[s] = abs(z[s]);
     theta[s] = arg(z[s]);
     rho[s] = log((1 + r[s]) / (1 - r[s]));
-    u[s] = (z[s] + I) / (1.0 + I * z[s]);
+    u[s] = I * (1.0 + z[s]) / (1.0 - z[s]);
   }
 
   // update average rho on each layer

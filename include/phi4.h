@@ -4,6 +4,7 @@
 
 #include <stack>
 #include <vector>
+#include <Eigen/Sparse>
 #include "lattice.h"
 
 class QfePhi4 {
@@ -17,9 +18,11 @@ public:
   double Metropolis();
   double Overrelax();
   int WolffUpdate();
+  std::vector<double> MInverse(double m0);
 
   QfeLattice* lattice;
   std::vector<double> phi;  // scalar field
+  std::vector<double> msq_ct;  // local mass counter terms
   std::vector<double> moments;  // magnetic moments
   double lambda;  // bare coupling
   double msq;  // bare mass squared
@@ -37,6 +40,7 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
   metropolis_z = 0.5;
   overrelax_demon = 0.0;
   phi.resize(lattice->sites.size(), 0.0);
+  msq_ct.resize(lattice->sites.size(), 0.0);
   is_clustered.resize(lattice->sites.size());
 }
 
@@ -57,7 +61,7 @@ double QfePhi4::Action() {
     double phi1 = phi[s];
     double phi2 = phi1 * phi1;  // phi^2
     double phi4 = phi2 * phi2;  // phi^4
-    double mass_term = 0.5 * msq * phi2;
+    double mass_term = 0.5 * (msq + msq_ct[s]) * phi2;
     double interaction_term = lambda * phi4;
     action += (mass_term + interaction_term) * lattice->sites[s].wt;
   }
@@ -114,7 +118,7 @@ double QfePhi4::Metropolis() {
     }
 
     // msq and lambda contributions to the action
-    double mass_term = 0.5 * msq * delta_phi2;
+    double mass_term = 0.5 * (msq + msq_ct[s]) * delta_phi2;
     double interaction_term = lambda * delta_phi4;
     delta_S += (mass_term + interaction_term) * site->wt;
 
@@ -153,7 +157,7 @@ double QfePhi4::Overrelax() {
     double phi_old = phi[s];
 
     double numerator = 0.0;
-    double denominator = msq * site->wt;
+    double denominator = (msq + msq_ct[s]) * site->wt;
     for (int n = 0; n < site->nn; n++) {
       double link_wt = lattice->links[site->links[n]].wt;
       numerator += link_wt * phi[site->neighbors[n]];
@@ -231,4 +235,60 @@ int QfePhi4::WolffUpdate() {
   }
 
   return wolff_cluster.size();
+}
+
+std::vector<double> QfePhi4::MInverse(double m0) {
+  std::vector<Eigen::Triplet<double>> M_elements;
+
+  // add nearest-neighbor interaction terms
+  for (int l = 0; l < lattice->n_links; l++) {
+    QfeLink* link = &lattice->links[l];
+    int a = link->sites[0];
+    int b = link->sites[1];
+    M_elements.push_back(Eigen::Triplet<double>(a, b, -link->wt));
+    M_elements.push_back(Eigen::Triplet<double>(b, a, -link->wt));
+  }
+
+  // add self-interaction terms
+  for (int s = 0; s < lattice->n_sites; s++) {
+    QfeSite* site = &lattice->sites[s];
+    double wt_sum = m0 * site->wt;
+    for (int n = 0; n < site->nn; n++) {
+      int l = site->links[n];
+      wt_sum += lattice->links[l].wt;
+    }
+    M_elements.push_back(Eigen::Triplet<double>(s, s, wt_sum));
+  }
+
+  Eigen::SparseMatrix<double> M(lattice->n_sites, lattice->n_sites);
+  M.setFromTriplets(M_elements.begin(), M_elements.end());
+
+  // create the solver and analyze M
+  Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> cg;
+  cg.compute(M);
+  assert(cg.info() == Eigen::Success);
+
+  std::map<int, double> ct_map;
+  std::vector<double> M_inv(lattice->n_sites);
+  for (int s = 0; s < lattice->n_sites; s++) {
+
+    // assume sites with the same weight have the same M_inv
+    int wt_int = int(round(lattice->sites[s].wt * 1e9));
+    if (ct_map.find(wt_int) == ct_map.end()) {
+
+      // create a source and solve via conjugate gradient
+      Eigen::VectorXd b = Eigen::VectorXd::Zero(lattice->n_sites);
+      b(s) = 1.0;
+      Eigen::VectorXd x = cg.solve(b);
+      assert(cg.info() == Eigen::Success);
+
+      // save M_inv in the map
+      ct_map[wt_int] = x(s);
+    }
+
+    // set the counterterm
+    M_inv[s] = ct_map[wt_int];
+  }
+
+  return M_inv;
 }

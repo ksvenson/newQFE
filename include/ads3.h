@@ -8,7 +8,7 @@
 class QfeLatticeAdS3 : public QfeLatticeAdS2 {
 
 public:
-  QfeLatticeAdS3(int n_layers, int q, int Nt);
+  QfeLatticeAdS3(int n_layers, int q, int Nt = 0);
   double Sigma(int s1, int s2);
   double DeltaT(int s1, int s2);
 
@@ -35,6 +35,10 @@ public:
 QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
   QfeLatticeAdS2(n_layers, q) {
 
+  // set number of time slices, default equal to number of boundary sites
+  if (Nt == 0) {
+    Nt = boundary_sites.size();
+  }
   this->Nt = Nt;
 
   // we start with a single AdS2 slice, and we need to make Nt copies
@@ -52,13 +56,12 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
   t.resize(sites.size(), 0);
 
   // set temporal-spatial lattice spacing ratio
-  t_scale = 1.0;
+  // t_scale = 1.0;  // fixed spacing
   // t_scale = 1.0 / layer_rho[1];
-  // t_scale = layer_cosh_rho[1];
+  // t_scale = layer_cosh_rho[1];  // uniform spacing at center
   // t_scale = double(n_layers) / (layer_cosh_rho[n_layers] * M_PI);
-  // t_scale = layer_cosh_rho[n_layers];
-  // t_scale = total_cosh_rho[n_layers];
-  // t_scale = double(2 * n_layers) / (M_PI * layer_rho[n_layers]);
+  t_scale = layer_cosh_rho[n_layers];  // uniform spacing at boundary
+  // t_scale = total_cosh_rho[n_layers];  // uniform (average) spacing everywhere
 
   // move the dummy sites to the end of the array
   layer_sites[n_layers + 1].clear();
@@ -80,11 +83,13 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
 
   // duplicate sites on the other slices
   for (int s0 = 0; s0 < n_sites_slice; s0++) {
+
+    // the original AdS2 site on the t = 0 slice
     QfeSite* site0 = &sites[s0];
 
-    // adjust the site weight
+    // adjust the site weight for AdS3
     site0->wt = cosh(rho[s0]) / t_scale;
-    int layer = site_layers[s0];
+    int layer = site_layers[s0];  // the layer that this site is on
 
     // adjust neighbor table for dummy neighbors
     for (int n = 0; n < site0->nn; n++) {
@@ -94,12 +99,14 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
       }
     }
 
-    // copy site coordinates and weights
+    // copy site coordinates and weights for sites on the other time slices
     for (int tt = 1; tt < Nt; tt++) {
-      int s = n_sites_slice * tt + s0;
-      sites[s].nn = 0;  // add links later
-      sites[s].wt = site0->wt;
 
+      int s = n_sites_slice * tt + s0;  // calculate site index
+      sites[s].nn = 0;  // add links later
+      sites[s].wt = site0->wt;  // site weight is the same
+
+      // set the site's layer and add it to the bulk or boundary
       site_layers[s] = layer;
       layer_sites[layer].push_back(s);
       if (layer < n_layers) {
@@ -108,6 +115,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
         boundary_sites.push_back(s);
       }
 
+      // set the site's coordinates
       z[s] = z[s0];
       r[s] = r[s0];
       theta[s] = theta[s0];
@@ -116,6 +124,8 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
       t[s] = tt;
     }
   }
+
+  // update the number of bulk/boundary sites
   n_bulk = bulk_sites.size();
   n_boundary = boundary_sites.size();
 
@@ -160,6 +170,8 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
 
 double QfeLatticeAdS3::Sigma(int s1, int s2) {
   if (s1 == s2) return 0.0;
+
+  // this is a relatively slow version but it correctly deals with edge cases
   double rho1 = rho[s1];
   double rho2 = rho[s2];
   double dt = DeltaT(s1, s2);

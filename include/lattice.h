@@ -129,8 +129,9 @@ void QfeLattice::ResizeSites(int n_sites, int n_dummy) {
 
 /**
  * @brief Make site @p s partway between sites @p s_a and @p s_b. The
- * parameter @p k is an interpolating factor between 0 and 1 that determines
- * how far from site @p s_a to put site @p s. Subclasses can override this
+ * parameter @p k is a value between 0 and 1 that determines how far from
+ * site @p s_a to put site @p s, with values of 0 and 1 giving the coordinates
+ * of site a and site b, respectively. Subclasses can override this
  * function to set the coordinates of the new point.
  */
 

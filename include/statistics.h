@@ -3,7 +3,10 @@
 #pragma once
 
 #include <cmath>
+#include <complex>
 #include <vector>
+
+typedef std::complex<double> Complex;
 
 class QfeMeasReal {
 
@@ -46,6 +49,44 @@ double QfeMeasReal::Error() {
   double mean = sum / double(n);
   double mean2 = sum2 / double(n);
   return sqrt((mean2 - mean * mean) / double(n));
+}
+
+class QfeMeasComplex {
+
+public:
+  QfeMeasComplex();
+  void Reset();
+  void Measure(Complex value);
+  Complex Mean();
+  Complex Error();
+
+  QfeMeasReal real_part;
+  QfeMeasReal imag_part;
+  Complex last;
+};
+
+QfeMeasComplex::QfeMeasComplex() {
+  Reset();
+}
+
+void QfeMeasComplex::Reset() {
+  real_part.Reset();
+  imag_part.Reset();
+  last = 0.0;
+}
+
+void QfeMeasComplex::Measure(Complex value) {
+  real_part.Measure(real(value));
+  imag_part.Measure(imag(value));
+  last = value;
+}
+
+Complex QfeMeasComplex::Mean() {
+  return Complex(real_part.Mean(), imag_part.Mean());
+}
+
+Complex QfeMeasComplex::Error() {
+  return Complex(real_part.Error(), imag_part.Error());
 }
 
 // TODO: come up with a way to consolidate these so it's not just the same

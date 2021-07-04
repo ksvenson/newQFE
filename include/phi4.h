@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <stack>
 #include <vector>

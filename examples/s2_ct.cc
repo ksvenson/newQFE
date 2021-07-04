@@ -1,6 +1,7 @@
 // s2_ct.cc
 
 #include <getopt.h>
+#include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <map>

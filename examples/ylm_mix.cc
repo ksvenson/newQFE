@@ -10,6 +10,7 @@
 // the group and irrep to use (valid values are listed below)
 
 #include <algorithm>
+#include <cassert>
 #include <complex>
 #include <cmath>
 #include <cstdio>

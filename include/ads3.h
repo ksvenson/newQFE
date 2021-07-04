@@ -41,6 +41,28 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
   }
   this->Nt = Nt;
 
+  // set temporal-spatial lattice spacing ratio (speed of light)
+  // t_scale = 1.0;  // fixed spacing
+  // t_scale = 1.0 / layer_rho[1];
+  // t_scale = layer_cosh_rho[1];  // uniform spacing at center
+  // t_scale = double(n_layers) / (layer_cosh_rho[n_layers] * M_PI);
+  // t_scale = layer_cosh_rho[n_layers];  // uniform spacing at boundary
+  // t_scale = total_cosh_rho[n_layers];  // uniform (average) spacing everywhere
+
+  // equal geodesic spacing in time and theta directions at boundary
+  double tanh2_sum = 0.0;
+  double cos_theta_sum = 0.0;
+  for (int i = 0; i < n_boundary; i++) {
+    int s = boundary_sites[i];
+    int sp1 = boundary_sites[(i + 1) % n_boundary];
+    double tanh_rho = tanh(rho[s]);
+    tanh2_sum += tanh_rho * tanh_rho;
+    cos_theta_sum += cos(Theta(s, sp1));
+  }
+  double tanh2_mean = tanh2_sum / double(n_boundary);
+  double cos_theta_mean = cos_theta_sum / double(n_boundary);
+  t_scale = 1.0 / acosh(1.0 + tanh2_mean * (1.0 - cos_theta_mean));
+
   // we start with a single AdS2 slice, and we need to make Nt copies
   int n_sites_slice = layer_offset[n_layers + 1];  // dynamic sites per slice
   n_sites = n_sites_slice * Nt;  // number of dynamic sites
@@ -55,14 +77,6 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
   u.resize(sites.size());
   t.resize(sites.size(), 0);
 
-  // set temporal-spatial lattice spacing ratio
-  // t_scale = 1.0;  // fixed spacing
-  // t_scale = 1.0 / layer_rho[1];
-  // t_scale = layer_cosh_rho[1];  // uniform spacing at center
-  // t_scale = double(n_layers) / (layer_cosh_rho[n_layers] * M_PI);
-  t_scale = layer_cosh_rho[n_layers];  // uniform spacing at boundary
-  // t_scale = total_cosh_rho[n_layers];  // uniform (average) spacing everywhere
-
   // move the dummy sites to the end of the array
   layer_sites[n_layers + 1].clear();
   for (int i = 0; i < n_dummy; i++) {
@@ -70,6 +84,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
     int s_new = n_sites + i;
     sites[s_new].nn = 0;
     sites[s_new].wt = cosh(rho[s_old]);
+    sites[s_new].id = sites[s_old].id;
     layer_sites[n_layers + 1].push_back(s_new);
 
     // copy coordinates
@@ -105,6 +120,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt) :
       int s = n_sites_slice * tt + s0;  // calculate site index
       sites[s].nn = 0;  // add links later
       sites[s].wt = site0->wt;  // site weight is the same
+      sites[s].id = site0->id;
 
       // set the site's layer and add it to the bulk or boundary
       site_layers[s] = layer;

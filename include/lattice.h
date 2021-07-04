@@ -19,6 +19,7 @@ struct QfeSite {
   int nn;  // number of nearest neighbors
   int links[MAX_SITE_NEIGHBORS];  // nearest neighbor links
   int neighbors[MAX_SITE_NEIGHBORS];  // nearest neighbor sites
+  int id;
 };
 
 struct QfeLink {
@@ -41,10 +42,11 @@ public:
   QfeLattice();
   void InitTriangle(int N, double skew = 0.0);
   virtual void ResizeSites(int n_sites, int n_dummy = 0);
-  virtual void InterpolateSite(int s, int s_a, int s_b, double k);
+  virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   int FindLink(int a, int b);
   int AddLink(int a, int b, double wt);
   int AddFace(int a, int b, int c);
+  void UpdateDistinct();
   void Refine2D(int n_refine);
   void PrintSites();
   void PrintLinks();
@@ -61,6 +63,11 @@ public:
   std::vector<QfeLink> links;
   std::vector<QfeFace> faces;
 
+  // symmetrically distinct sites
+  std::vector<int> distinct_n_sites;  // number of sites for each distinct id
+  std::vector<int> distinct_first;  // representative site for distinct group
+  int n_distinct;
+
   QfeRng rng;
 };
 
@@ -69,6 +76,7 @@ QfeLattice::QfeLattice() {
   n_dummy = 0;
   n_links = 0;
   n_faces = 0;
+  n_distinct = 0;
 }
 
 /**
@@ -91,6 +99,7 @@ void QfeLattice::InitTriangle(int N, double skew) {
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt = 1.0;
     sites[s].nn = 0;
+    sites[s].id = 0;
   }
 
   // create links
@@ -128,14 +137,16 @@ void QfeLattice::ResizeSites(int n_sites, int n_dummy) {
 }
 
 /**
- * @brief Make site @p s partway between sites @p s_a and @p s_b. The
- * parameter @p k is a value between 0 and 1 that determines how far from
- * site @p s_a to put site @p s, with values of 0 and 1 giving the coordinates
- * of site a and site b, respectively. Subclasses can override this
- * function to set the coordinates of the new point.
+ * @brief Set the position of site @p s by interpolating between sites @p s_a
+ * and @p s_b. The parameters @p num and @den define a fraction between 0 and 1
+ * that determines how far from site @p s_a to put site @p s, with values of
+ * 0 and 1 giving the coordinates of site a and site b, respectively.
+ *
+ * Subclasses can override this function to set the coordinates of the new
+ * point.
  */
 
-void QfeLattice::InterpolateSite(int s, int s_a, int s_b, double k) {
+void QfeLattice::InterpolateSite(int s, int s_a, int s_b, int num, int den) {
   return;
 }
 
@@ -183,6 +194,33 @@ int QfeLattice::AddLink(int a, int b, double wt) {
   links.push_back(link);
   n_links = links.size();
   return l;
+}
+
+/**
+ * @brief Update the number of sites in each distinct group and find the
+ * first site from each distinct group.
+ */
+
+void QfeLattice::UpdateDistinct() {
+  distinct_n_sites.clear();
+  distinct_first.clear();
+  n_distinct = 0;
+
+  for (int s = 0; s < n_sites; s++) {
+    int id = sites[s].id;
+    while (id >= n_distinct) {
+      distinct_n_sites.push_back(0);
+      distinct_first.push_back(0);
+      n_distinct++;
+    }
+
+    if (distinct_n_sites[id] == 0) {
+      // first site with this id
+      distinct_first[id] = s;
+    }
+    distinct_n_sites[id]++;
+    // printf("%04d %d\n", s, id);
+  }
 }
 
 /**
@@ -259,6 +297,7 @@ void QfeLattice::Refine2D(int n_refine) {
   for (int s = n_old_sites; s < n_sites; s++) {
     sites[s].wt = 1.0;
     sites[s].nn = 0;
+    sites[s].id = 0;
   }
 
   // map from an ordered pair of old sites to an array of new sites running
@@ -275,7 +314,8 @@ void QfeLattice::Refine2D(int n_refine) {
     std::vector<int> s_edge;
     s_edge.push_back(s_a);
     for (int n = 1; n < n_refine; n++) {
-      InterpolateSite(s, s_a, s_b, double(n) / double(n_refine));
+      InterpolateSite(s, s_a, s_b, n, n_refine);
+      sites[s].id = (n_refine - abs(2 * n - n_refine)) / 2;
       s_edge.push_back(s);
       s++;
     }
@@ -309,6 +349,9 @@ void QfeLattice::Refine2D(int n_refine) {
     e_outer[1] = edge_sites[key];
     sprintf(key, "%d_%d", s_corner[2], s_corner[0]);
     e_outer[2] = edge_sites[key];
+
+    // distinct id of the first site in the first layer
+    int layer_id = n_refine / 2 + 1;
 
     while (e_outer[0].size() >= 3) {
       int outer_size = e_outer[0].size();
@@ -361,7 +404,8 @@ void QfeLattice::Refine2D(int n_refine) {
           AddFace(e_outer[e][i + 1], e_outer[e][i + 2], s);
 
           e_inner[e].push_back(s);
-          InterpolateSite(s, s_a, s_b, double(i + 1) / double(inner_size + 1));
+          InterpolateSite(s, s_a, s_b, i + 1, inner_size + 1);
+          sites[s].id = layer_id + (inner_size - 1 - abs(2 * i - (inner_size - 1))) / 2;
         }
       }
 
@@ -377,6 +421,9 @@ void QfeLattice::Refine2D(int n_refine) {
       e_outer[0] = e_inner[0];
       e_outer[1] = e_inner[1];
       e_outer[2] = e_inner[2];
+
+      layer_id += (inner_size - 1) / 2 + 1;
+      // printf("layer_id: %d\n", layer_id);
     }
   }
 }

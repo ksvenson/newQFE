@@ -71,6 +71,7 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
   site_layers.resize(1);
   sites[0].wt = site_wt;
   sites[0].nn = 0;
+  sites[0].id = 0;
   site_layers[0] = 0;
 
   // keep track of layer size and offset of first site in each layer
@@ -121,6 +122,7 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
       int s = layer_offset[n] + c;
       sites[s].wt = site_wt;
       sites[s].nn = 0;
+      sites[s].id = 0;
       layer_sites[n].push_back(s);
       if (n < n_layers) {
         bulk_sites.push_back(s);
@@ -203,38 +205,6 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
     layer_rho[n] = rho_sum / double(layer_size[n]);
     layer_cosh_rho[n] = cosh_rho_sum / double(layer_size[n]);
     total_cosh_rho[n] = total_cosh_rho_sum / double(layer_offset[n] + layer_size[n]);
-  }
-}
-
-/**
- * @brief Add phi4 mass counterterms to boundary sites as defined in
- * equation (3.19) of [1].
- *
- * [1] T. Hartman and L. Rastelli, JHEP01(2008)019
- * @see https://arxiv.org/abs/hep-th/0602106
- *
- * @param field QFE scalar field to add counterterms to
- * @param d Number of dimensions
- */
-
-void QfeLatticeAdS2::AddBoundaryCT(QfePhi4& field, double d) {
-  double nu = sqrt(0.25 * d * d + field.msq);
-  double delta_m = 0.5 * d - nu;
-  double f = 1.0;
-  double coeff = f * 2.0 * pow(M_PI, 0.5 * d);
-
-  // if m = 0, the ratio of gamma functions is one if nu = 2 and zero otherwise
-  if (field.msq == 0.0) {
-    if (d != 2.0) return;
-  } else {
-    coeff *= tgamma(1.0 - nu) / tgamma(delta_m);
-  }
-
-  for (int i = 0; i < n_boundary; i++) {
-    int s = boundary_sites[i];
-
-    // assume epsilon is the distance to the edge of the poincare disk
-    field.msq_ct[s] += delta_m + coeff * pow(1.0 - r[s], 2.0 * nu);
   }
 }
 

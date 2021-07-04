@@ -252,7 +252,7 @@ std::vector<double> QfePhi4::MInverse(double m0) {
   // add self-interaction terms
   for (int s = 0; s < lattice->n_sites; s++) {
     QfeSite* site = &lattice->sites[s];
-    double wt_sum = m0 * site->wt;
+    double wt_sum = m0 * site->wt / double(lattice->n_sites);
     for (int n = 0; n < site->nn; n++) {
       int l = site->links[n];
       wt_sum += lattice->links[l].wt;
@@ -273,7 +273,7 @@ std::vector<double> QfePhi4::MInverse(double m0) {
   for (int s = 0; s < lattice->n_sites; s++) {
 
     // assume sites with the same weight have the same M_inv
-    int wt_int = int(round(lattice->sites[s].wt * 1e9));
+    int wt_int = int(round(lattice->sites[s].wt * 1.0e10));
     if (ct_map.find(wt_int) == ct_map.end()) {
 
       // create a source and solve via conjugate gradient

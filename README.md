@@ -8,6 +8,4 @@ The lattice can be defined on the following manifolds:
 
 - Flat triangular lattice with periodic boundary conditions.
 - AdS2 lattice with Dirichlet boundary conditions.
-
-We try to follow the Google C++ Style Guide whenever it makes sense to do so:
-https://google.github.io/styleguide/cppguide.html.
+- S2 lattice from Platonic solids triangulated and projected onto a unit sphere.

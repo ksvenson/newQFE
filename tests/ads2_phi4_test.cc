@@ -22,6 +22,10 @@ int main(int argc, char* argv[]) {
   double lambda = 0.0;
   printf("lambda: %.4f\n", lambda);
 
+  // boundary mass coefficient
+  double gamma = 0.0;
+  printf("gamma: %.4f\n", gamma);
+
   QfeLatticeAdS2 lattice(N, q);
   printf("total sites: %d\n", lattice.n_sites + lattice.n_dummy);
   printf("bulk sites: %d\n", lattice.n_bulk);
@@ -30,6 +34,12 @@ int main(int argc, char* argv[]) {
 
   QfePhi4 field(&lattice, msq, lambda);
   field.HotStart();
+
+  // add boundary mass counter terms
+  for (int i = 0; i < lattice.n_boundary; i++) {
+    int s = lattice.boundary_sites[i];
+    field.msq_ct[s] = gamma;
+  }
 
   printf("initial action: %.12f\n", field.Action());
 

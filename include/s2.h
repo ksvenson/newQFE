@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <complex>
 #include <vector>
 #include <map>
@@ -18,8 +19,8 @@ public:
 
   QfeLatticeS2(int q = 5);
   void ResizeSites(int n_sites, int n_dummy = 0);
-  void LoopRefine(int n_refine);
-  void InterpolateSite(int s, int s_a, int s_b, double k);
+  void LoopRefine(int n_loop);
+  void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   void Inflate();
   void UpdateAntipodes();
   double EdgeSquared(int l);
@@ -35,9 +36,6 @@ public:
   std::vector<Eigen::Vector3d> r;
   std::vector<std::vector<Complex>> ylm;  // spherical harmonics
   std::vector<int> antipode;  // antipode of each site (0 by default)
-  std::vector<int> unique_id;  // unique id for each site
-  std::vector<double> unique_wt;  // list of unique site weights
-  int n_unique;
 };
 
 /**
@@ -49,7 +47,6 @@ public:
 QfeLatticeS2::QfeLatticeS2(int q) {
 
   assert(q >= 3 && q <= 5);
-  n_unique = 1;
 
   if (q == 3) {
 
@@ -60,6 +57,7 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     for (int s = 0; s < n_sites; s++) {
       sites[s].nn = 0;
       sites[s].wt = 1.0;
+      sites[s].id = 0;
     }
 
     // set coordinates
@@ -83,6 +81,7 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     for (int s = 0; s < n_sites; s++) {
       sites[s].nn = 0;
       sites[s].wt = 1.0;
+      sites[s].id = 0;
     }
 
     // set coordinates
@@ -121,6 +120,7 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     for (int s = 0; s < n_sites; s++) {
       sites[s].nn = 0;
       sites[s].wt = 1.0;
+      sites[s].id = 0;
     }
 
     // set coordinates
@@ -164,6 +164,7 @@ QfeLatticeS2::QfeLatticeS2(int q) {
   } else {
     fprintf(stderr, "S2 with q = %d not implemented\n", q);
   }
+  n_distinct = 1;
 }
 
 /**
@@ -175,20 +176,19 @@ void QfeLatticeS2::ResizeSites(int n_sites, int n_dummy) {
   r.resize(n_sites + n_dummy);
   ylm.resize(n_sites + n_dummy);
   antipode.resize(n_sites + n_dummy, 0);
-  unique_id.resize(n_sites + n_dummy, 0);
 }
 
 /**
  * @brief Refine all triangles on the lattice according to the procedure
  * defined in [1]. Each triangle in the original lattice will be split into
- * 2^(@p n_refine) new triangles. This procedure does not project the
+ * 2^(@p n_loop) new triangles. This procedure does not project the
  * new sites onto a unit sphere, though it does produce a mesh which is
  * closer to a unit sphere than flat refinement.
  *
  * [1] C. Loop, Smooth Subdivision Surfaces based on Triangles, 1987
  */
 
-void QfeLatticeS2::LoopRefine(int n_refine) {
+void QfeLatticeS2::LoopRefine(int n_loop) {
 
   const double loop_alpha[] = {
     1.0,
@@ -216,11 +216,16 @@ void QfeLatticeS2::LoopRefine(int n_refine) {
     0.55222977312995349577L
   };
 
+  // start with loop's alpha coefficients
   const double* beta_nn = loop_alpha;
 
-  for (int i = 0; i <= n_refine; i++) {
+  // keep track of the distinct id between any two distinct sites
+  std::map<std::string, int> distinct_map;
 
-    if (i == n_refine) beta_nn = loop_beta;
+  for (int i = 0; i <= n_loop; i++) {
+
+    // switch to loop's beta coefficients for the last step
+    if (i == n_loop) beta_nn = loop_beta;
 
     // set coordinates of old sites
     std::vector<Eigen::Vector3d> old_r = r;
@@ -235,7 +240,7 @@ void QfeLatticeS2::LoopRefine(int n_refine) {
       r[s] = beta * old_r[s] + r_sum * (1.0 - beta) / double(nn);
     }
 
-    if (i == n_refine) break;
+    if (i == n_loop) break;
 
     // copy the old links and faces
     std::vector<QfeLink> old_links = links;
@@ -273,7 +278,22 @@ void QfeLatticeS2::LoopRefine(int n_refine) {
         if (s4 != s1 && s4 != s2) break;
       }
 
-      r[n_old_sites + l] = 0.125 * (3.0 * (old_r[s1] + old_r[s2]) + old_r[s3] + old_r[s4]);
+      r[n_old_sites + l] = 0.125 * (3.0 * (old_r[s1] + old_r[s2]) + \
+          old_r[s3] + old_r[s4]);
+
+      // generate a key to identify the distinct site id
+      char key[50];
+      int id1 = std::min(sites[s1].id, sites[s2].id);
+      int id2 = std::max(sites[s1].id, sites[s2].id);
+      sprintf(key, "%d_%d", id1, id2);
+
+      if (distinct_map.find(key) == distinct_map.end()) {
+        // create a new distinct id
+        // printf("%s %d\n", key, n_distinct);
+        distinct_map[key] = n_distinct;
+        n_distinct++;
+      }
+      sites[n_old_sites + l].id = distinct_map[key];
     }
 
     // remove old neighbors
@@ -305,9 +325,9 @@ void QfeLatticeS2::LoopRefine(int n_refine) {
 
 /**
  * @brief Set the position of site @p s by interpolating between sites @p s_a
- * and @p s_b. The parameter @p k is a value between 0 and 1 that determines
- * how far from site @p s_a to put site @p s, with values of 0 and 1 giving
- * the coordinates of site a and site b, respectively.
+ * and @p s_b. The parameters @p num and @den define a fraction between 0 and 1
+ * that determines how far from site @p s_a to put site @p s, with values of
+ * 0 and 1 giving the coordinates of site a and site b, respectively.
  *
  * When refining triangles on S2, it might seem that interpolating along
  * spherical geodesics would give the most uniform tesselation. However, it
@@ -319,9 +339,10 @@ void QfeLatticeS2::LoopRefine(int n_refine) {
  * the sphere.
  */
 
-void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
+void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, int num, int den) {
 
   // interpolate along a flat line in the embedding space
+  double k = double(num) / double(den);
   r[s] = r[s_a] * (1.0 - k) + r[s_b] * k;
 }
 
@@ -330,8 +351,6 @@ void QfeLatticeS2::InterpolateSite(int s, int s_a, int s_b, double k) {
  */
 
 void QfeLatticeS2::Inflate() {
-
-  std::map<std::string, int> antipode_map;
   for (int s = 0; s < n_sites; s++) {
     r[s].normalize();
   }
@@ -353,9 +372,9 @@ void QfeLatticeS2::UpdateAntipodes() {
     int y_int = int(round(r[s].y() * 1.0e9));
     int z_int = int(round(r[s].z() * 1.0e9));
     char key[50];  // keys should be about 32 bytes long
-    sprintf(key, "%+d_%+d_%+d", x_int, y_int, z_int);
+    sprintf(key, "%+d,%+d,%+d", x_int, y_int, z_int);
     char anti_key[50];
-    sprintf(anti_key, "%+d_%+d_%+d", -x_int, -y_int, -z_int);
+    sprintf(anti_key, "%+d,%+d,%+d", -x_int, -y_int, -z_int);
 
     if (antipode_map.find(anti_key) != antipode_map.end()) {
       // antipode found in map
@@ -373,6 +392,10 @@ void QfeLatticeS2::UpdateAntipodes() {
     // print error message if there are any unpaired sites
     fprintf(stderr, "no antipode found for %lu/%d sites\n", \
         antipode_map.size(), n_sites);
+    // std::map<std::string, int>::iterator it;
+    // for (it = antipode_map.begin(); it != antipode_map.end(); it++) {
+    //   fprintf(stderr, "%04d %s\n", it->second, it->first.c_str());
+    // }
   }
 }
 
@@ -472,27 +495,6 @@ void QfeLatticeS2::UpdateWeights() {
 
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt /= site_wt_norm;
-  }
-
-  // sort sites into groups with the same weight
-  std::map<int, int> wt_map;
-  unique_wt.resize(0);
-  n_unique = 0;
-
-  for (int s = 0; s < n_sites; s++) {
-    double wt = sites[s].wt;
-    int wt_key = int(round(wt * 1.0e9));
-    int id = n_unique;
-    if (wt_map.find(wt_key) != wt_map.end()) {
-      // id already exists
-      id = wt_map[wt_key];
-    } else {
-      // new id
-      unique_wt.push_back(wt);
-      wt_map[wt_key] = n_unique;
-      n_unique++;
-    }
-    unique_id[s] = id;
   }
 }
 

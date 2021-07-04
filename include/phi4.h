@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <stack>
 #include <vector>
 #include <Eigen/Sparse>
@@ -218,7 +219,7 @@ int QfePhi4::WolffUpdate() {
       if (phi[s] == 0.0) continue;
 
       // skip if sign bits don't match
-      if (signbit(value) != signbit(phi[s])) continue;
+      if (std::signbit(value) != std::signbit(phi[s])) continue;
 
       double prob = 1.0 - exp(-2.0 * value * phi[s] * link_wt);
       if (lattice->rng.RandReal() < prob) {

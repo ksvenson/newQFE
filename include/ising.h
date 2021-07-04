@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <stack>
 #include <vector>
 #include "lattice.h"
@@ -124,7 +125,7 @@ int QfeIsing::WolffUpdate() {
       if (is_clustered[s]) continue;
 
       // skip if sign bits don't match
-      if (signbit(value) != signbit(spin[s])) continue;
+      if (std::signbit(value) != std::signbit(spin[s])) continue;
 
       double prob = 1.0 - exp(-2.0 * beta * link_wt);
       if (lattice->rng.RandReal() < prob) {

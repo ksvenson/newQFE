@@ -13,6 +13,7 @@
 #include <complex>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>

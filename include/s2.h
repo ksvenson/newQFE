@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <complex>
 #include <vector>
 #include <map>
@@ -531,7 +532,7 @@ void QfeLatticeS2::UpdateYlm(int l_max) {
 
 Complex QfeLatticeS2::GetYlm(int s, int l, int m) {
 
-  int abs_m = abs(m);
+  int abs_m = fabs(m);
   assert(abs_m <= l);
 
   int i = (l * (l + 1)) / 2 + abs_m;

@@ -450,7 +450,7 @@ void ylm_mix(const char* group, const char* irrep, int l, int m) {
   for (int i = 0; i < result.size(); i++) {
 
     result[i] /= coeff;
-    if (abs(result[i]) < 1.0e-9) continue;
+    if (std::abs(result[i]) < 1.0e-9) continue;
 
     printf("Y(%2d,%+3d) %+.18Lf %+.18Lf\n", l, i - l, \
         real(result[i]), imag(result[i]));

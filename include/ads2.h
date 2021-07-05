@@ -182,8 +182,8 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
   rho.resize(z.size());
   u.resize(z.size());
   for (int s = 0; s < z.size(); s++) {
-    r[s] = abs(z[s]);
-    theta[s] = arg(z[s]);
+    r[s] = std::abs(z[s]);
+    theta[s] = std::arg(z[s]);
     rho[s] = log((1 + r[s]) / (1 - r[s]));
     u[s] = I * (1.0 + z[s]) / (1.0 - z[s]);
   }
@@ -217,8 +217,8 @@ double QfeLatticeAdS2::Sigma(int s1, int s2) {
   if (s1 == s2) return 0.0;
   const Complex z1 = z[s1];
   const Complex z2 = z[s2];
-  const double a = abs(1.0 - conj(z1) * z2);
-  const double b = abs(z1 - z2);
+  const double a = std::abs(1.0 - conj(z1) * z2);
+  const double b = std::abs(z1 - z2);
   return log((a + b) / (a - b));
 }
 

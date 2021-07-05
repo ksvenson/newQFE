@@ -1,5 +1,6 @@
 // lattice_test.cc
 
+#include <cmath>
 #include <cstdio>
 #include <vector>
 #include "phi4.h"
@@ -80,7 +81,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
-    mag_abs[i] = abs(m);
+    mag_abs[i] = fabs(m);
     mag2[i] = m2;
     mag4[i] = m2 * m2;
   }

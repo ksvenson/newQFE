@@ -1,6 +1,7 @@
 // ads2_phi4_test.cc
 
 #include <cmath>
+#include <complex>
 #include <cstdio>
 #include <map>
 #include <vector>
@@ -82,10 +83,10 @@ int main(int argc, char* argv[]) {
     // if (lattice.t[s1] != lattice.t[s2]) continue;
 
     // only include sites with the same rho as the first boundary site
-    // if (abs(lattice.z[s1]) - abs(lattice.z[lattice.boundary_sites[0]]) > 1e-6) continue;
+    // if (std::abs(lattice.z[s1]) - std::abs(lattice.z[lattice.boundary_sites[0]]) > 1e-6) continue;
 
     // only include sites with the same spatial position (AdS3)
-    // if (abs(lattice.z[s1] - lattice.z[s2]) > 1e-6) continue;
+    // if (std::abs(lattice.z[s1] - lattice.z[s2]) > 1e-6) continue;
 
     // get an integer representation of sigma to use as a bin key
     int sigma_int = int(round(sigma / 1.0e-6));
@@ -154,7 +155,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < mag.size(); i++) {
     double m = mag[i];
     double m2 = m * m;
-    mag_abs[i] = abs(m);
+    mag_abs[i] = fabs(m);
     mag2[i] = m2;
     mag4[i] = m2 * m2;
   }

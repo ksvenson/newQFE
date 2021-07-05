@@ -1,6 +1,7 @@
 // ads3_crit.cc
 
 #include <getopt.h>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -130,7 +131,7 @@ int main(int argc, char* argv[]) {
       int s = lattice.boundary_sites[i];
       phi_sum += field.phi[s] * lattice.sites[s].wt;
       phi2_sum += field.phi[s] * field.phi[s] * lattice.sites[s].wt;
-      phi_abs_sum += abs(field.phi[s]) * lattice.sites[s].wt;
+      phi_abs_sum += fabs(field.phi[s]) * lattice.sites[s].wt;
     }
     phi.push_back(phi_sum / double(lattice.n_boundary));
     phi2.push_back(phi2_sum / double(lattice.n_boundary));
@@ -159,7 +160,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < phi.size(); i++) {
     double m = phi[i];
     double m2 = m * m;
-    mag_abs[i] = abs(m);
+    mag_abs[i] = fabs(m);
     mag2[i] = m2;
     mag4[i] = m2 * m2;
     mag_action[i] = m * action[i];

@@ -12,7 +12,7 @@ typedef std::complex<double> Complex;
 
 int main(int argc, char* argv[]) {
 
-  int q = 3;
+  int q = 5;
   int n_refine = 64;
   if (argc > 1) {
     n_refine = atoi(argv[1]);
@@ -34,8 +34,8 @@ int main(int argc, char* argv[]) {
   int l_max = 12;
 
   QfeLatticeS2 lattice(q);
-  // lattice.Refine2D(n_refine);
-  lattice.LoopRefine(6);
+  lattice.Refine2D(n_refine);
+  // lattice.LoopRefine(6);
   lattice.Inflate();
   lattice.UpdateDistinct();
   lattice.UpdateAntipodes();

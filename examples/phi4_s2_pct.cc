@@ -47,23 +47,9 @@ int main(int argc, char* argv[]) {
   field.HotStart();
   field.metropolis_z = 0.1;
 
-  // // apply exact counter terms
-  // double ct_sum = 0.0;
-  // for (int s = 0; s < lattice.n_sites; s++) {
-  //   double log_wt = log(lattice.sites[s].wt);
-  //   field.msq_ct[s] = log_wt * 4.135;
-  //   ct_sum += field.msq_ct[s] * lattice.sites[s].wt;
-  // }
-  //
-  // // subtract position-independent piece
-  // double ct_mean = ct_sum / double(lattice.n_sites);
-  // for (int s = 0; s < lattice.n_sites; s++) {
-  //   field.msq_ct[s] -= ct_mean;
-  // }
-
   // open the counter term file
   char path[50];
-  sprintf(path, "ct/ct_%d_%d_loop.dat", q, n_refine);
+  sprintf(path, "ct/ct_%d_%d.dat", q, n_refine);
   FILE* file = fopen(path, "r");
   if (file == nullptr) {
     fprintf(stderr, "unable to open counterterm file: %s\n", path);
@@ -77,10 +63,27 @@ int main(int argc, char* argv[]) {
   fclose(file);
 
   // apply the counter terms to each site
+  const double Q = 0.068916111927724006189L;  // sqrt(3) / 8pi
+  double ct_mult = -12.0 * field.lambda * exp(-Q * field.lambda);
+  printf("ct_mult: %.12e\n", ct_mult);
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
-    field.msq_ct[s] += -6.0 * field.lambda * ct[id];
+    field.msq_ct[s] += ct_mult * ct[id];
   }
+
+  // // apply exact counter terms
+  // double ct_sum = 0.0;
+  // for (int s = 0; s < lattice.n_sites; s++) {
+  //   double log_wt = log(lattice.sites[s].wt);
+  //   field.msq_ct[s] = -log_wt * ct_mult * Q;
+  //   ct_sum += field.msq_ct[s] * lattice.sites[s].wt;
+  // }
+  //
+  // // subtract position-independent piece
+  // double ct_mean = ct_sum / double(lattice.n_sites);
+  // for (int s = 0; s < lattice.n_sites; s++) {
+  //   field.msq_ct[s] -= ct_mean;
+  // }
 
   // get spherical harmonic combinations that mix with the A irrep of I
   std::vector<double> C0(lattice.n_sites, real(lattice.ylm[0][0]));
@@ -157,8 +160,8 @@ int main(int argc, char* argv[]) {
     double Q6_sum = 0.0;
     double Q10_sum = 0.0;
     double Q12_sum = 0.0;
-    std::vector<double> distinct_phi2_sum(lattice.n_distinct);
-    std::vector<double> distinct_antipodal_phi2_sum(lattice.n_distinct);
+    std::vector<double> distinct_phi2_sum(lattice.n_distinct, 0.0);
+    std::vector<double> distinct_antipodal_phi2_sum(lattice.n_distinct, 0.0);
     for (int s = 0; s < lattice.n_sites; s++) {
       int a = lattice.antipode[s];
       double phi = field.phi[s];
@@ -223,17 +226,11 @@ int main(int argc, char* argv[]) {
   printf("Q10: %.12e (%.12e)\n", Q10.Mean(), Q10.Error());
   printf("Q12: %.12e (%.12e)\n", Q12.Mean(), Q12.Error());
 
-  printf("distinct_phi2:\n");
+  printf("\n");
   for (int i = 0; i < lattice.n_distinct; i++) {
     int s = lattice.distinct_first[i];
-    printf("%04d %.12f %.12e %.12e\n", i, lattice.sites[s].wt, \
-        distinct_phi2[i].Mean(), distinct_phi2[i].Error());
-  }
-
-  printf("distinct_antipodal_phi2:\n");
-  for (int i = 0; i < lattice.n_distinct; i++) {
-    int s = lattice.distinct_first[i];
-    printf("%04d %.12f %.12e %.12e\n", i, lattice.sites[s].wt, \
+    printf("%04d %.12f %.12e %.12e %.12e %.12e\n", i, lattice.sites[s].wt, \
+        distinct_phi2[i].Mean(), distinct_phi2[i].Error(), \
         distinct_antipodal_phi2[i].Mean(), \
         distinct_antipodal_phi2[i].Error());
   }

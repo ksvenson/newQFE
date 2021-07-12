@@ -19,7 +19,6 @@ int main(int argc, char* argv[]) {
   int q = 5;
   double msq = -21.96;
   double lambda = 10.0;
-  double ct_mult = 1.0;
   const char* ct_dir = "./ct";
   int n_therm = 2000;
   int n_traj = 100000;
@@ -33,7 +32,6 @@ int main(int argc, char* argv[]) {
     { "q", required_argument, 0, 'q' },
     { "msq", required_argument, 0, 'm' },
     { "lambda", required_argument, 0, 'l' },
-    { "ct_mult", required_argument, 0, 'c' },
     { "ct_dir", required_argument, 0, 'd' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
@@ -44,7 +42,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "Nqmlcdhtswez";
+  const char* short_options = "Nqmldhtswez";
 
   while (true) {
 
@@ -57,7 +55,6 @@ int main(int argc, char* argv[]) {
       case 'q': q = atoi(optarg); break;
       case 'm': msq = std::stod(optarg); break;
       case 'l': lambda = std::stod(optarg); break;
-      case 'c': ct_mult = std::stod(optarg); break;
       case 'd': ct_dir = optarg; break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
@@ -90,7 +87,6 @@ int main(int argc, char* argv[]) {
   field.metropolis_z = metropolis_z;
   printf("msq: %.4f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
-  printf("ct_mult: %.12f\n", ct_mult);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
 
@@ -110,9 +106,11 @@ int main(int argc, char* argv[]) {
   fclose(ct_file);
 
   // apply the counter terms to each site
+  const double Q = 0.068916111927724006189L;  // sqrt(3) / 8pi
+  double ct_mult = -12.0 * field.lambda * exp(-Q * field.lambda);
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
-    field.msq_ct[s] += -6.0 * field.lambda * ct[id] * ct_mult;
+    field.msq_ct[s] += ct[id] * ct_mult;
   }
 
   // measurements

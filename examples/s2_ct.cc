@@ -4,11 +4,44 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <future>
 #include <map>
 #include <vector>
 #include <Eigen/Sparse>
 #include "s2.h"
 #include "timer.h"
+
+#define PARALLEL
+
+struct Result {
+  int s;
+  double M_inv_x;
+  int iterations;
+  double error;
+  double solve_time;
+};
+
+void async_calc_ct(Result* r, Eigen::SparseMatrix<double>* M, int s) {
+
+  // create the solver and analyze M
+  Timer solve_timer;
+  Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> cg;
+  cg.compute(*M);
+  assert(cg.info() == Eigen::Success);
+
+  // create a source and solve via conjugate gradient
+  Eigen::VectorXd b = Eigen::VectorXd::Zero(M->rows());
+  b(s) = 1.0;
+  Eigen::VectorXd x = cg.solve(b);
+  solve_timer.Stop();
+  assert(cg.info() == Eigen::Success);
+
+  r->s = s;
+  r->M_inv_x = x(s);
+  r->iterations = cg.iterations();
+  r->error = cg.error();
+  r->solve_time = solve_timer.Duration();
+}
 
 int main(int argc, char* argv[]) {
 
@@ -92,6 +125,47 @@ int main(int argc, char* argv[]) {
   Eigen::SparseMatrix<double> M(lattice.n_sites, lattice.n_sites);
   M.setFromTriplets(M_elements.begin(), M_elements.end());
 
+#ifdef PARALLEL
+
+  int max_threads = std::thread::hardware_concurrency();
+  std::vector<std::thread> threads(max_threads);
+
+  std::vector<Result> results(lattice.n_distinct);
+  std::vector<double> M_inv(lattice.n_distinct);
+
+  double ct_sum = 0.0;
+  for (int i = 0; i < lattice.n_distinct; i += max_threads) {
+
+    for (int t = 0; t < max_threads; t++) {
+      int id = i + t;
+      if (id >= lattice.n_distinct) break;
+      int s = lattice.distinct_first[id];
+      threads[t] = std::thread(async_calc_ct, &results[id], &M, s);
+    }
+
+    // find M inverse for each distinct site
+    for (int t = 0; t < max_threads; t++) {
+
+      int id = i + t;
+      if (id >= lattice.n_distinct) break;
+      threads[t].join();
+      Result r = results[id];
+
+      printf("\ndistinct site %i / %d\n", id, lattice.n_distinct);
+      printf("M_inv_x: %.12e\n", r.M_inv_x);
+      printf("iterations: %d\n", r.iterations);
+      printf("error: %.12e\n", r.error);
+      printf("solve time: %.12f\n", r.solve_time);
+
+      // save M_inv in the map
+      M_inv[id] = r.M_inv_x;
+      double site_wt = lattice.sites[r.s].wt;
+      ct_sum += M_inv[id] * double(lattice.distinct_n_sites[id]) * site_wt;
+    }
+  }
+
+#else  // not PARALLEL
+
   // create the solver and analyze M
   Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> cg;
   cg.compute(M);
@@ -107,7 +181,6 @@ int main(int argc, char* argv[]) {
     double site_wt = lattice.sites[s].wt;
 
     printf("\ndistinct site %i / %d\n", i, lattice.n_distinct);
-    // printf("wt: %.12f\n", site_wt);
 
     // create a source and solve via conjugate gradient
     Eigen::VectorXd b = Eigen::VectorXd::Zero(lattice.n_sites);
@@ -127,6 +200,8 @@ int main(int argc, char* argv[]) {
     M_inv[i] = x(s);
     ct_sum += M_inv[i] * double(lattice.distinct_n_sites[i]) * site_wt;
   }
+#endif  // PARALLEL
+
   double ct_mean = ct_sum / double(lattice.n_sites);
 
   total_timer.Stop();

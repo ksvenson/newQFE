@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "Nqml";
+  const char* short_options = "N:q:m:l";
 
   while (true) {
 

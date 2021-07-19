@@ -17,6 +17,7 @@ int main(int argc, char* argv[]) {
   int Nt = 0;  // default to number of boundary sites
   double msq = -1.0;
   double lambda = 1.0;
+  double delta_plus = 2.0;
   int n_therm = 1000;
   int n_traj = 20000;
   int n_skip = 20;
@@ -30,6 +31,7 @@ int main(int argc, char* argv[]) {
     { "n_t", required_argument, 0, 'T' },
     { "msq", required_argument, 0, 'm' },
     { "lambda", required_argument, 0, 'l' },
+    { "delta_plus", required_argument, 0, 'D' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
@@ -39,7 +41,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "NqTmlhtswez";
+  const char* short_options = "N:q:T:m:l:D:h:t:s:w:e:z:";
 
   while (true) {
 
@@ -53,6 +55,7 @@ int main(int argc, char* argv[]) {
       case 'T': Nt = atoi(optarg); break;
       case 'm': msq = std::stod(optarg); break;
       case 'l': lambda = std::stod(optarg); break;
+      case 'D': delta_plus = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;
@@ -73,27 +76,26 @@ int main(int argc, char* argv[]) {
   printf("n_layers: %d\n", lattice.n_layers);
   printf("q: %d\n", lattice.q);
   printf("Nt: %d\n", lattice.Nt);
-  printf("total sites: %d\n", lattice.n_sites + lattice.n_dummy);
+  printf("total sites: %d\n", lattice.n_sites);
   printf("bulk sites: %d\n", lattice.n_bulk);
   printf("boundary sites: %d\n", lattice.n_boundary);
-  printf("dummy sites: %d\n", lattice.n_dummy);
   printf("t_scale: %.12f\n", lattice.t_scale);
-
-  printf("average rho/cosh(rho) at each layer:\n");
-  for (int n = 0; n <= n_layers + 1; n++) {
-    printf("%d %.12f %.12f %.12f\n", n, \
-        lattice.layer_rho[n], \
-        lattice.layer_cosh_rho[n], \
-        lattice.total_cosh_rho[n]);
-  }
 
   QfePhi4 field(&lattice, msq, lambda);
   field.metropolis_z = metropolis_z;
   field.HotStart();
   printf("msq: %.4f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
+  printf("delta_plus: %.4f\n", delta_plus);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
+
+  // add boundary mass counter terms
+  for (int i = 0; i < lattice.n_boundary; i++) {
+    int s = lattice.boundary_sites[i];
+    double eps = lattice.eps[s];
+    field.msq_ct[s] = delta_plus / (eps * eps);
+  }
 
   // measurements
   std::vector<double> phi;  // average phi on the boundary (magnetization)
@@ -129,9 +131,11 @@ int main(int argc, char* argv[]) {
     double phi_abs_sum = 0.0;
     for (int i = 0; i < lattice.n_boundary; i++) {
       int s = lattice.boundary_sites[i];
-      phi_sum += field.phi[s] * lattice.sites[s].wt;
-      phi2_sum += field.phi[s] * field.phi[s] * lattice.sites[s].wt;
-      phi_abs_sum += fabs(field.phi[s]) * lattice.sites[s].wt;
+      double eps = lattice.eps[s];
+      double p1 = field.phi[s] * pow(2.0 * eps, -delta_plus);
+      phi_sum += p1 * lattice.sites[s].wt;
+      phi2_sum += p1 * p1 * lattice.sites[s].wt;
+      phi_abs_sum += fabs(p1) * lattice.sites[s].wt;
     }
     phi.push_back(phi_sum / double(lattice.n_boundary));
     phi2.push_back(phi2_sum / double(lattice.n_boundary));
@@ -153,20 +157,12 @@ int main(int argc, char* argv[]) {
   std::vector<double> mag_abs(phi.size());
   std::vector<double> mag2(phi.size());
   std::vector<double> mag4(phi.size());
-  std::vector<double> mag_action(phi.size());
-  std::vector<double> mag2_action(phi.size());
-  std::vector<double> mag3_action(phi.size());
-  std::vector<double> mag4_action(phi.size());
   for (int i = 0; i < phi.size(); i++) {
     double m = phi[i];
     double m2 = m * m;
     mag_abs[i] = fabs(m);
     mag2[i] = m2;
     mag4[i] = m2 * m2;
-    mag_action[i] = m * action[i];
-    mag2_action[i] = m2 * action[i];
-    mag3_action[i] = m * m2 * action[i];
-    mag4_action[i] = m2 * m2 * action[i];
   }
 
   printf("phi: %+.12e (%.12e), %.4f\n", \
@@ -198,22 +194,6 @@ int main(int argc, char* argv[]) {
       Susceptibility(mag2, mag_abs), \
       JackknifeSusceptibility(mag2, mag_abs));
 
-  printf("S: %+.12e (%.12e), %.4f\n", \
-      Mean(action), JackknifeMean(action), \
-      AutocorrTime(action));
-  printf("m_S: %+.12e (%.12e), %.4f\n", \
-      Mean(mag_action), JackknifeMean(mag_action), \
-      AutocorrTime(mag_action));
-  printf("m^2_S: %.12e (%.12e), %.4f\n", \
-      Mean(mag2_action), JackknifeMean(mag2_action), \
-      AutocorrTime(mag2_action));
-  printf("m^3_S: %.12e (%.12e), %.4f\n", \
-      Mean(mag3_action), JackknifeMean(mag3_action), \
-      AutocorrTime(mag3_action));
-  printf("m^4_S: %.12e (%.12e), %.4f\n", \
-      Mean(mag4_action), JackknifeMean(mag4_action), \
-      AutocorrTime(mag4_action));
-
   FILE* file;
 
   file = fopen("ads3_crit_boundary.dat", "a");
@@ -231,11 +211,6 @@ int main(int argc, char* argv[]) {
   fprintf(file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));
   fprintf(file, " %.12e %.12e", \
       Susceptibility(mag2, mag_abs), JackknifeSusceptibility(mag2, mag_abs));
-  fprintf(file, " %.12e %.12e", Mean(action), JackknifeMean(action));
-  fprintf(file, " %.12e %.12e", Mean(mag_action), JackknifeMean(mag_action));
-  fprintf(file, " %.12e %.12e", Mean(mag2_action), JackknifeMean(mag2_action));
-  fprintf(file, " %.12e %.12e", Mean(mag3_action), JackknifeMean(mag4_action));
-  fprintf(file, " %.12e %.12e", Mean(mag4_action), JackknifeMean(mag4_action));
   fprintf(file, "\n");
   fclose(file);
 

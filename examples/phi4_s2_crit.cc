@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "Nqmldhtswez";
+  const char* short_options = "N:q:m:l:d:h:t:s:w:e:z:";
 
   while (true) {
 

@@ -20,7 +20,7 @@ class QfeLatticeS2 : public QfeLattice {
 public:
 
   QfeLatticeS2(int q = 5);
-  void ResizeSites(int n_sites, int n_dummy = 0);
+  void ResizeSites(int n_sites);
   void LoopRefine(int n_loop);
   void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   void Inflate();
@@ -173,11 +173,11 @@ QfeLatticeS2::QfeLatticeS2(int q) {
  * @brief Change the number of sites.
  */
 
-void QfeLatticeS2::ResizeSites(int n_sites, int n_dummy) {
-  QfeLattice::ResizeSites(n_sites, n_dummy);
-  r.resize(n_sites + n_dummy);
-  ylm.resize(n_sites + n_dummy);
-  antipode.resize(n_sites + n_dummy, 0);
+void QfeLatticeS2::ResizeSites(int n_sites) {
+  QfeLattice::ResizeSites(n_sites);
+  r.resize(n_sites);
+  ylm.resize(n_sites);
+  antipode.resize(n_sites, 0);
 }
 
 /**

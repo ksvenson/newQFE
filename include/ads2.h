@@ -15,7 +15,7 @@ class QfeLatticeAdS2 : public QfeLattice {
 
 public:
   QfeLatticeAdS2(int n_layers, int q);
-  void AddBoundaryCT(QfePhi4& field, double d = 2.0);
+  virtual void ResizeSites(int n_sites);
   double Sigma(int s1, int s2);
   double Theta(int s1, int s2);
 
@@ -29,18 +29,15 @@ public:
   std::vector<std::vector<int>> layer_sites;  // list of sites at each layer
   std::vector<int> bulk_sites;  // list of bulk sites
   std::vector<int> boundary_sites;  // list of boundary sites
-  std::vector<int> site_layers;  // layer for each site
 
   // site coordinates
   std::vector<Complex> z;  // complex coordinates on poincaré disc
   std::vector<double> r;  // abs(z)
   std::vector<double> theta;  // arg(z)
+  std::vector<double> eps;  // 1 - r (distance to boundary)
   std::vector<double> rho;  // global radial coordinate
   std::vector<Complex> u;  // complex coordinates in upper half-plane
-
-  std::vector<double> layer_rho;  // average rho at each layer
-  std::vector<double> layer_cosh_rho;  // average cosh(rho) at each layer
-  std::vector<double> total_cosh_rho;  // average cosh(rho) up to each layer
+  std::vector<int> site_layers;  // layer for each site
 };
 
 /**
@@ -67,29 +64,27 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
   double site_wt = 1.0;
 
   // create site 0 at the origin
-  sites.resize(1);
-  site_layers.resize(1);
+  ResizeSites(1);
   sites[0].wt = site_wt;
   sites[0].nn = 0;
   sites[0].id = 0;
   site_layers[0] = 0;
 
   // keep track of layer size and offset of first site in each layer
-  // we need one extra layer of dummy sites for dirichlet boundary conditions
-  layer_size.resize(n_layers + 2);
-  layer_offset.resize(n_layers + 2);
-  layer_sites.resize(n_layers + 2);
+  layer_size.resize(n_layers + 1);
+  layer_offset.resize(n_layers + 1);
+  layer_sites.resize(n_layers + 1);
   layer_size[0] = 1;
   layer_offset[0] = 0;
   layer_sites[0].push_back(0);
   bulk_sites.push_back(0);
 
-  z.resize(1, 0.0);
+  z[0] = 0.0;
   const double sin_q = sin(M_PI / double(q));
   const double cos_q = cos(M_PI / double(q));
   const Complex w = 2.0 * I * sin_q;
 
-  for (int n = 1; n <= (n_layers + 1); n++) {
+  for (int n = 1; n <= n_layers; n++) {
 
     // determine the number of sites in this layer
     if (n == 1) {
@@ -106,13 +101,8 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
 
     // resize the array of sites
     int new_size = sites.size() + layer_size[n];
-    sites.resize(new_size);
-    z.resize(new_size);
+    ResizeSites(new_size);
     site_layers.resize(new_size);
-    if (n <= n_layers) {
-      // don't include dummy sites in n_sites
-      n_sites = new_size;
-    }
 
     // add sites to fill up the layer
     int p = layer_offset[n - 1];  // previous layer site to connect to
@@ -124,10 +114,10 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
       sites[s].nn = 0;
       sites[s].id = 0;
       layer_sites[n].push_back(s);
-      if (n < n_layers) {
-        bulk_sites.push_back(s);
-      } else if (n == n_layers) {
+      if (n == n_layers) {
         boundary_sites.push_back(s);
+      } else {
+        bulk_sites.push_back(s);
       }
       site_layers[s] = n;
       AddLink(p, s, link_wt);
@@ -159,10 +149,6 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
       AddLink(p, layer_offset[n], link_wt);
     }
 
-    // exit the loop if we're at the dummy layer
-    // dummy sites aren't connected to each other
-    if (n == (n_layers + 1)) break;
-
     // connect current layer sites to one another in a circle
     for (int c = 0; c < layer_size[n]; c++) {
       int s = c + layer_offset[n];
@@ -171,41 +157,33 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
     }
   }
 
-  // identify the number of sites of each type (bulk, boundary, dummy)
+  // identify the number of sites of each type (bulk, boundary)
   n_bulk = layer_offset[n_layers];
   n_boundary = layer_size[n_layers];
-  n_dummy = layer_size[n_layers + 1];
 
-  // calculate site coordinates in various forms (including dummy sites)
-  r.resize(z.size());
-  theta.resize(z.size());
-  rho.resize(z.size());
-  u.resize(z.size());
-  for (int s = 0; s < z.size(); s++) {
+  // calculate site coordinates in various forms
+  for (int s = 0; s < n_sites; s++) {
     r[s] = std::abs(z[s]);
     theta[s] = std::arg(z[s]);
-    rho[s] = log((1 + r[s]) / (1 - r[s]));
+    eps[s] = 1.0 - r[s];
+    rho[s] = log((1.0 + r[s]) / (1.0 - r[s]));
     u[s] = I * (1.0 + z[s]) / (1.0 - z[s]);
   }
+}
 
-  // update average rho on each layer
-  layer_rho.resize(n_layers + 2);
-  layer_cosh_rho.resize(n_layers + 2);
-  total_cosh_rho.resize(n_layers + 2);
-  double total_cosh_rho_sum = 0.0;
-  for (int n = 0; n <= (n_layers + 1); n++) {
-    double rho_sum = 0.0;
-    double cosh_rho_sum = 0.0;
-    for (int i = 0; i < layer_size[n]; i++) {
-      int s = layer_offset[n] + i;
-      rho_sum += rho[s];
-      cosh_rho_sum += cosh(rho[s]);
-      total_cosh_rho_sum += cosh(rho[s]);
-    }
-    layer_rho[n] = rho_sum / double(layer_size[n]);
-    layer_cosh_rho[n] = cosh_rho_sum / double(layer_size[n]);
-    total_cosh_rho[n] = total_cosh_rho_sum / double(layer_offset[n] + layer_size[n]);
-  }
+/**
+ * @brief Change the number of sites.
+ */
+
+void QfeLatticeAdS2::ResizeSites(int n_sites) {
+  QfeLattice::ResizeSites(n_sites);
+  z.resize(n_sites);
+  r.resize(n_sites);
+  theta.resize(n_sites);
+  eps.resize(n_sites);
+  rho.resize(n_sites);
+  u.resize(n_sites);
+  site_layers.resize(n_sites, 0);
 }
 
 /**

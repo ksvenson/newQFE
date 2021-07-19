@@ -28,10 +28,9 @@ int main(int argc, char* argv[]) {
   printf("gamma: %.4f\n", gamma);
 
   QfeLatticeAdS2 lattice(N, q);
-  printf("total sites: %d\n", lattice.n_sites + lattice.n_dummy);
+  printf("total sites: %d\n", lattice.n_sites);
   printf("bulk sites: %d\n", lattice.n_bulk);
   printf("boundary sites: %d\n", lattice.n_boundary);
-  printf("dummy sites: %d\n", lattice.n_dummy);
 
   QfePhi4 field(&lattice, msq, lambda);
   field.HotStart();

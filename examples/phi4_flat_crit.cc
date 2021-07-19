@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "Nkmlhtswez";
+  const char* short_options = "N:k:m:l:h:t:s:w:e:z:";
 
   while (true) {
 

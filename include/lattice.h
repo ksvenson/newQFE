@@ -41,7 +41,7 @@ class QfeLattice {
 public:
   QfeLattice();
   void InitTriangle(int N, double skew = 0.0);
-  virtual void ResizeSites(int n_sites, int n_dummy = 0);
+  virtual void ResizeSites(int n_sites);
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   int FindLink(int a, int b);
   int AddLink(int a, int b, double wt);
@@ -55,7 +55,6 @@ public:
   void CheckConsistency();
 
   int n_sites;
-  int n_dummy;  // number of dummy sites for dirichlet boundary conditions
   int n_links;
   int n_faces;
 
@@ -73,7 +72,6 @@ public:
 
 QfeLattice::QfeLattice() {
   n_sites = 0;
-  n_dummy = 0;
   n_links = 0;
   n_faces = 0;
   n_distinct = 0;
@@ -130,10 +128,9 @@ void QfeLattice::InitTriangle(int N, double skew) {
  * @brief Change the number of sites.
  */
 
-void QfeLattice::ResizeSites(int n_sites, int n_dummy) {
+void QfeLattice::ResizeSites(int n_sites) {
   this->n_sites = n_sites;
-  this->n_dummy = n_dummy;
-  sites.resize(n_sites + n_dummy);
+  sites.resize(n_sites);
 }
 
 /**
@@ -484,11 +481,9 @@ void QfeLattice::PrintFaces() {
 void QfeLattice::CheckConnectivity() {
 
   printf("\n*** connectivity check ***\n");
-  printf("dynamic sites: %d\n", n_sites);
-  printf("dummy sites: %d\n", int(sites.size()) - n_sites);
-  printf("total sites: %d\n", int(sites.size()));
+  printf("n_sites: %d\n", n_sites);
 
-  // keep track of which sites are connected (include dummy sites)
+  // keep track of which sites are connected
   std::vector<bool> is_connected(sites.size());
 
   // create the stack
@@ -534,41 +529,36 @@ void QfeLattice::CheckConsistency() {
 
     int s_a = links[l].sites[0];
     int s_b = links[l].sites[1];
+    int n;
 
     // check 1st site
-    if (s_a < n_sites) {  // skip dummy sites
-      int n;
-      for (n = 0; n < sites[s_a].nn; n++) {
-        if (sites[s_a].links[n] == l) break;
-      }
+    for (n = 0; n < sites[s_a].nn; n++) {
+      if (sites[s_a].links[n] == l) break;
+    }
 
-      if (n == sites[s_a].nn) {
-        // link not found
-        printf("link %04d not found in neighbor table for site %04d\n", l, s_a);
-        n_inconsistent++;
-      } else if (sites[s_a].neighbors[n] != s_b) {
-        printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
-            s_a, sites[s_a].neighbors[n], l, s_b);
-        n_inconsistent++;
-      }
+    if (n == sites[s_a].nn) {
+      // link not found
+      printf("link %04d not found in neighbor table for site %04d\n", l, s_a);
+      n_inconsistent++;
+    } else if (sites[s_a].neighbors[n] != s_b) {
+      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
+          s_a, sites[s_a].neighbors[n], l, s_b);
+      n_inconsistent++;
     }
 
     // check 2nd site
-    if (s_b < n_sites) {  // skip dummy sites
-      int n;
-      for (n = 0; n < sites[s_b].nn; n++) {
-        if (sites[s_b].links[n] == l) break;
-      }
+    for (n = 0; n < sites[s_b].nn; n++) {
+      if (sites[s_b].links[n] == l) break;
+    }
 
-      if (n == sites[s_b].nn) {
-        // link not found
-        printf("link %04d not found in neighbor table for site %04d\n", l, s_b);
-        n_inconsistent++;
-      } else if (sites[s_b].neighbors[n] != s_a) {
-        printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
-            s_b, sites[s_b].neighbors[n], l, s_a);
-        n_inconsistent++;
-      }
+    if (n == sites[s_b].nn) {
+      // link not found
+      printf("link %04d not found in neighbor table for site %04d\n", l, s_b);
+      n_inconsistent++;
+    } else if (sites[s_b].neighbors[n] != s_a) {
+      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
+          s_b, sites[s_b].neighbors[n], l, s_a);
+      n_inconsistent++;
     }
   }
   printf("%d inconsistencies found\n", n_inconsistent);

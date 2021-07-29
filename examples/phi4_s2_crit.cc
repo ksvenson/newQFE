@@ -19,6 +19,7 @@ int main(int argc, char* argv[]) {
   int q = 5;
   double msq = -21.96;
   double lambda = 10.0;
+  double ct_mult = 1.0;
   const char* ct_dir = "./ct";
   int n_therm = 2000;
   int n_traj = 100000;
@@ -32,6 +33,7 @@ int main(int argc, char* argv[]) {
     { "q", required_argument, 0, 'q' },
     { "msq", required_argument, 0, 'm' },
     { "lambda", required_argument, 0, 'l' },
+    { "ct_mult", required_argument, 0, 'c' },
     { "ct_dir", required_argument, 0, 'd' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
@@ -42,7 +44,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:q:m:l:d:h:t:s:w:e:z:";
+  const char* short_options = "N:q:m:l:c:d:h:t:s:w:e:z:";
 
   while (true) {
 
@@ -55,6 +57,7 @@ int main(int argc, char* argv[]) {
       case 'q': q = atoi(optarg); break;
       case 'm': msq = std::stod(optarg); break;
       case 'l': lambda = std::stod(optarg); break;
+      case 'c': ct_mult = std::stod(optarg); break;
       case 'd': ct_dir = optarg; break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
@@ -78,6 +81,7 @@ int main(int argc, char* argv[]) {
   lattice.UpdateWeights();
   lattice.UpdateDistinct();
   lattice.UpdateAntipodes();
+  lattice.UpdateYlm(12);
   printf("n_refine: %d\n", n_refine);
   printf("q: %d\n", q);
   printf("total sites: %d\n", lattice.n_sites);
@@ -106,18 +110,49 @@ int main(int argc, char* argv[]) {
   fclose(ct_file);
 
   // apply the counter terms to each site
-  const double Q = 0.068916111927724006189L;  // sqrt(3) / 8pi
-  double ct_mult = -12.0 * field.lambda * exp(-Q * field.lambda);
+  if (ct_mult == -1.0) {
+    // use "exact" non-perturbative ct
+    const double Q = 0.068916111927724006189L;  // sqrt(3) / 8pi
+    ct_mult = exp(-Q * field.lambda);
+  }
+  printf("ct_mult: %.12f\n", ct_mult);
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
-    field.msq_ct[s] += ct[id] * ct_mult;
+    field.msq_ct[s] += -12.0 * field.lambda * ct[id] * ct_mult;
+  }
+
+  // get spherical harmonic combinations that mix with the A irrep of I
+  std::vector<double> C6(lattice.n_sites);
+  std::vector<double> C10(lattice.n_sites);
+  std::vector<double> C12(lattice.n_sites);
+  for (int s = 0; s < lattice.n_sites; s++) {
+
+    Complex l6_0 = sqrt(11.0 / 25.0) * lattice.ylm[s][21];
+    Complex l6_5 = 2.0 * sqrt(7.0 / 25.0) * lattice.ylm[s][26];
+    C6[s] = real(l6_0 - l6_5);
+
+    Complex l10_0 = sqrt(247.0 / 1875.0) * lattice.ylm[s][55];
+    Complex l10_5 = 2.0 * sqrt(209.0 / 625.0) * lattice.ylm[s][60];
+    Complex l10_10 = 2.0 * sqrt(187.0 / 1875.0) * lattice.ylm[s][65];
+    C10[s] = real(l10_0 + l10_5 + l10_10);
+
+    Complex l12_0 = sqrt(1071.0 / 3125.0) * lattice.ylm[s][78];
+    Complex l12_5 = 2.0 * sqrt(286.0 / 3125.0) * lattice.ylm[s][83];
+    Complex l12_10 = 2.0 * sqrt(741.0 / 3125.0) * lattice.ylm[s][88];
+    C12[s] = real(l12_0 - l12_5 + l12_10);
   }
 
   // measurements
   std::vector<double> phi;  // average phi
   std::vector<double> phi2;  // average phi^2
+  std::vector<double> anti_phi2;  // average antipodal phi^2
   std::vector<double> phi_abs;  // average abs(phi)
   std::vector<double> action;
+  std::vector<QfeMeasReal> distinct_phi2(lattice.n_distinct);
+  std::vector<QfeMeasReal> distinct_anti_phi2(lattice.n_distinct);
+  QfeMeasReal Q6;
+  QfeMeasReal Q10;
+  QfeMeasReal Q12;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
   QfeMeasReal accept_overrelax;
@@ -141,18 +176,49 @@ int main(int argc, char* argv[]) {
 
     demon.Measure(field.overrelax_demon);
 
-    // measure <phi> on the boundary
+    // measure field
     double phi_sum = 0.0;
     double phi2_sum = 0.0;
+    double anti_phi2_sum = 0.0;
     double phi_abs_sum = 0.0;
+    double Q6_sum = 0.0;
+    double Q10_sum = 0.0;
+    double Q12_sum = 0.0;
+    std::vector<double> distinct_phi2_sum(lattice.n_distinct, 0.0);
+    std::vector<double> distinct_anti_phi2_sum(lattice.n_distinct, 0.0);
+
     for (int s = 0; s < lattice.n_sites; s++) {
-      phi_sum += field.phi[s] * lattice.sites[s].wt;
-      phi2_sum += field.phi[s] * field.phi[s] * lattice.sites[s].wt;
-      phi_abs_sum += fabs(field.phi[s]) * lattice.sites[s].wt;
+      int a = lattice.antipode[s];
+      double phi_s = field.phi[s];
+      double anti_phi_s = field.phi[a];
+      double wt = lattice.sites[s].wt;
+
+      phi_sum += phi_s * wt;
+      phi2_sum += phi_s * phi_s * wt;
+      phi_abs_sum += fabs(phi_s) * wt;
+      anti_phi2_sum += phi_s * anti_phi_s * wt;
+      Q6_sum += C6[s] * phi_s * anti_phi_s * wt;
+      Q10_sum += C10[s] * phi_s * anti_phi_s * wt;
+      Q12_sum += C12[s] * phi_s * anti_phi_s * wt;
+
+      // measure distinct sites
+      int i = lattice.sites[s].id;
+      distinct_phi2_sum[i] += phi_s * phi_s;
+      distinct_anti_phi2_sum[i] += phi_s * anti_phi_s;
     }
     phi.push_back(phi_sum / double(lattice.n_sites));
     phi2.push_back(phi2_sum / double(lattice.n_sites));
+    anti_phi2.push_back(anti_phi2_sum / double(lattice.n_sites));
     phi_abs.push_back(phi_abs_sum / double(lattice.n_sites));
+    Q6.Measure(Q6_sum / double(lattice.n_sites));
+    Q10.Measure(Q10_sum / double(lattice.n_sites));
+    Q12.Measure(Q12_sum / double(lattice.n_sites));
+
+    for (int i = 0; i < lattice.n_distinct; i++) {
+      double n = double(lattice.distinct_n_sites[i]);
+      distinct_phi2[i].Measure(distinct_phi2_sum[i] / n);
+      distinct_anti_phi2[i].Measure(distinct_anti_phi2_sum[i] / n);
+    }
 
     action.push_back(field.Action());
     printf("%06d %.12f %.4f %.4f %.12f %.4f\n", \
@@ -207,12 +273,29 @@ int main(int argc, char* argv[]) {
       Susceptibility(mag2, mag_abs), \
       JackknifeSusceptibility(mag2, mag_abs));
 
+  printf("Q6: %.12e (%.12e)\n", Q6.Mean(), Q6.Error());
+  printf("Q10: %.12e (%.12e)\n", Q10.Mean(), Q10.Error());
+  printf("Q12: %.12e (%.12e)\n", Q12.Mean(), Q12.Error());
+
+  printf("\n");
+  for (int i = 0; i < lattice.n_distinct; i++) {
+    int s = lattice.distinct_first[i];
+    printf("%04d %3d %.12f %.12e %.12e %.12e %.12e\n", i, \
+        lattice.distinct_n_sites[i], \
+        lattice.sites[s].wt, \
+        distinct_phi2[i].Mean(), \
+        distinct_phi2[i].Error(), \
+        distinct_anti_phi2[i].Mean(), \
+        distinct_anti_phi2[i].Error());
+  }
+
   FILE* out_file = fopen("phi4_s2_crit.dat", "a");
   fprintf(out_file, "%d", n_refine);
   fprintf(out_file, " %d", q);
   fprintf(out_file, " %d", lattice.n_sites);
   fprintf(out_file, " %.12f", field.msq);
   fprintf(out_file, " %.4f", field.lambda);
+  fprintf(out_file, " %.12f", ct_mult);
   fprintf(out_file, " %+.12e %.12e", Mean(phi), JackknifeMean(phi));
   fprintf(out_file, " %.12e %.12e", Mean(phi2), JackknifeMean(phi2));
   fprintf(out_file, " %.12e %.12e", Mean(phi_abs), JackknifeMean(phi_abs));
@@ -223,7 +306,26 @@ int main(int argc, char* argv[]) {
   fprintf(out_file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));
   fprintf(out_file, " %.12e %.12e", \
       Susceptibility(mag2, mag_abs), JackknifeSusceptibility(mag2, mag_abs));
+  fprintf(out_file, " %.12e %.12e", Q6.Mean(), Q6.Error());
+  fprintf(out_file, " %.12e %.12e", Q10.Mean(), Q10.Error());
+  fprintf(out_file, " %.12e %.12e", Q12.Mean(), Q12.Error());
   fprintf(out_file, "\n");
+  fclose(out_file);
+
+  sprintf(path, "distinct_%d_%d_%04d.dat", n_refine, q, int(round(ct_mult * 1000)));
+  out_file = fopen(path, "w");
+
+  for (int i = 0; i < lattice.n_distinct; i++) {
+    int s = lattice.distinct_first[i];
+    fprintf(out_file, "%04d", i);
+    fprintf(out_file, " %3d", lattice.distinct_n_sites[i]);
+    fprintf(out_file, " %.12f", lattice.sites[s].wt);
+    fprintf(out_file, " %.12e", distinct_phi2[i].Mean());
+    fprintf(out_file, " %.12e", distinct_phi2[i].Error());
+    fprintf(out_file, " %.12e", distinct_anti_phi2[i].Mean());
+    fprintf(out_file, " %.12e", distinct_anti_phi2[i].Error());
+    fprintf(out_file, "\n");
+  }
   fclose(out_file);
 
   return 0;

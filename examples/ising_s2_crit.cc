@@ -19,7 +19,6 @@ int main(int argc, char* argv[]) {
   int q = 5;
   double beta = 0.41;
   double ct_mult = 0.0;
-  const char* ct_dir = "./ct";
   int n_therm = 2000;
   int n_traj = 100000;
   int n_skip = 10;
@@ -31,7 +30,6 @@ int main(int argc, char* argv[]) {
     { "q", required_argument, 0, 'q' },
     { "beta", required_argument, 0, 'b' },
     { "ct_mult", required_argument, 0, 'c' },
-    { "ct_dir", required_argument, 0, 'd' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
@@ -40,7 +38,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:q:b:c:d:h:t:s:w:e:";
+  const char* short_options = "N:q:b:c:h:t:s:w:e:";
 
   while (true) {
 
@@ -53,7 +51,6 @@ int main(int argc, char* argv[]) {
       case 'q': q = atoi(optarg); break;
       case 'b': beta = std::stod(optarg); break;
       case 'c': ct_mult = std::stod(optarg); break;
-      case 'd': ct_dir = optarg; break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;

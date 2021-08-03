@@ -20,6 +20,7 @@ public:
 
   QfeLattice* lattice;
   std::vector<double> spin;  // Z2 field
+  std::vector<double> beta_ct;  // local beta counterterm
   double beta;  // bare coupling
 
   std::vector<bool> is_clustered;  // keeps track of which sites are clustered
@@ -30,6 +31,7 @@ QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
   this->lattice = lattice;
   this->beta = beta;
   spin.resize(lattice->sites.size());
+  beta_ct.resize(lattice->links.size(), 0.0);
   is_clustered.resize(lattice->sites.size());
 }
 
@@ -41,7 +43,7 @@ double QfeIsing::Action() {
     QfeLink* link = &lattice->links[l];
     int a = link->sites[0];
     int b = link->sites[1];
-    action -= beta * spin[a] * spin[b] * link->wt;
+    action -= (beta + beta_ct[l]) * spin[a] * spin[b] * link->wt;
   }
 
   return action / double(lattice->n_sites);
@@ -78,9 +80,9 @@ double QfeIsing::Metropolis() {
     for (int n = 0; n < site->nn; n++) {
       int l = site->links[n];
       double link_wt = lattice->links[l].wt;
-      delta_S += spin[site->neighbors[n]] * link_wt;
+      delta_S += (beta + beta_ct[l]) * spin[site->neighbors[n]] * link_wt;
     }
-    delta_S *= 2.0 * beta * spin[s];
+    delta_S *= 2.0 * spin[s];
 
     // metropolis algorithm
     if (delta_S <= 0.0 || lattice->rng.RandReal() < exp(-delta_S)) {
@@ -127,7 +129,7 @@ int QfeIsing::WolffUpdate() {
       // skip if sign bits don't match
       if (std::signbit(value) != std::signbit(spin[s])) continue;
 
-      double prob = 1.0 - exp(-2.0 * beta * link_wt);
+      double prob = 1.0 - exp(-2.0 * (beta + beta_ct[l]) * link_wt);
       if (lattice->rng.RandReal() < prob) {
         // add the site to the cluster
         wolff_cluster.push_back(s);

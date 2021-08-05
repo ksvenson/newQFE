@@ -117,6 +117,9 @@ int main(int argc, char* argv[]) {
   QfeMeasReal Q6;
   QfeMeasReal Q10;
   QfeMeasReal Q12;
+  QfeMeasReal Q6_anti;
+  QfeMeasReal Q10_anti;
+  QfeMeasReal Q12_anti;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
   QfeMeasReal accept_overrelax;
@@ -142,6 +145,9 @@ int main(int argc, char* argv[]) {
     double Q6_sum = 0.0;
     double Q10_sum = 0.0;
     double Q12_sum = 0.0;
+    double Q6_anti_sum = 0.0;
+    double Q10_anti_sum = 0.0;
+    double Q12_anti_sum = 0.0;
     std::vector<double> distinct_spin_sum(lattice.n_distinct, 0.0);
     std::vector<double> distinct_anti_spin_sum(lattice.n_distinct, 0.0);
 
@@ -153,9 +159,12 @@ int main(int argc, char* argv[]) {
 
       spin_sum += spin_s * wt;
       anti_spin_sum += spin_s * anti_spin_s * wt;
-      Q6_sum += C6[s] * spin_s * anti_spin_s * wt;
-      Q10_sum += C10[s] * spin_s * anti_spin_s * wt;
-      Q12_sum += C12[s] * spin_s * anti_spin_s * wt;
+      Q6_sum += C6[s] * spin_s * wt;
+      Q10_sum += C10[s] * spin_s * wt;
+      Q12_sum += C12[s] * spin_s * wt;
+      Q6_anti_sum += C6[s] * spin_s * anti_spin_s * wt;
+      Q10_anti_sum += C10[s] * spin_s * anti_spin_s * wt;
+      Q12_anti_sum += C12[s] * spin_s * anti_spin_s * wt;
 
       // measure distinct sites
       int i = lattice.sites[s].id;
@@ -167,6 +176,9 @@ int main(int argc, char* argv[]) {
     Q6.Measure(Q6_sum / double(lattice.n_sites));
     Q10.Measure(Q10_sum / double(lattice.n_sites));
     Q12.Measure(Q12_sum / double(lattice.n_sites));
+    Q6_anti.Measure(Q6_anti_sum / double(lattice.n_sites));
+    Q10_anti.Measure(Q10_anti_sum / double(lattice.n_sites));
+    Q12_anti.Measure(Q12_anti_sum / double(lattice.n_sites));
 
     for (int i = 0; i < lattice.n_distinct; i++) {
       double n = double(lattice.distinct_n_sites[i]);
@@ -221,6 +233,9 @@ int main(int argc, char* argv[]) {
   printf("Q6: %.12e (%.12e)\n", Q6.Mean(), Q6.Error());
   printf("Q10: %.12e (%.12e)\n", Q10.Mean(), Q10.Error());
   printf("Q12: %.12e (%.12e)\n", Q12.Mean(), Q12.Error());
+  printf("Q6_anti: %.12e (%.12e)\n", Q6_anti.Mean(), Q6_anti.Error());
+  printf("Q10_anti: %.12e (%.12e)\n", Q10_anti.Mean(), Q10_anti.Error());
+  printf("Q12_anti: %.12e (%.12e)\n", Q12_anti.Mean(), Q12_anti.Error());
 
   printf("\n");
   for (int i = 0; i < lattice.n_distinct; i++) {
@@ -250,6 +265,9 @@ int main(int argc, char* argv[]) {
   fprintf(out_file, " %.12e %.12e", Q6.Mean(), Q6.Error());
   fprintf(out_file, " %.12e %.12e", Q10.Mean(), Q10.Error());
   fprintf(out_file, " %.12e %.12e", Q12.Mean(), Q12.Error());
+  fprintf(out_file, " %.12e %.12e", Q6_anti.Mean(), Q6_anti.Error());
+  fprintf(out_file, " %.12e %.12e", Q10_anti.Mean(), Q10_anti.Error());
+  fprintf(out_file, " %.12e %.12e", Q12_anti.Mean(), Q12_anti.Error());
   fprintf(out_file, "\n");
   fclose(out_file);
 

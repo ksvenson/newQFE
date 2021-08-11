@@ -17,10 +17,10 @@ public:
   double Mean();
   double Error();
 
-  double sum;
-  double sum2;
-  double last;
-  int n;
+  double sum;  // sum of measurements
+  double sum2;  // sum of squared measurements
+  double last;  // most recent measurement
+  int n;  // number of measurements
 };
 
 QfeMeasReal::QfeMeasReal() {
@@ -136,13 +136,19 @@ double JackknifeMean(std::vector<double>& a) {
 
 double JackknifeLogMean(std::vector<double>& a) {
   int n = a.size();
-	double mean = LogMean(a);
+  std::vector<double> bin_means(n);
+
+  for (int i = 0; i < n; i++) {
+    std::vector<double> a_del = a;
+    a_del.erase(a_del.begin() + i);
+    bin_means[i] = LogMean(a_del);
+  }
+
+  double mean = Mean(bin_means);
 	double err = 0.0;
 
 	for (int i = 0; i < n; i++) {
-    std::vector<double> a_del = a;
-    a_del.erase(a_del.begin() + i);
-    double diff = LogMean(a_del) - mean;
+    double diff = bin_means[i] - mean;
     err += diff * diff;
   }
 
@@ -152,15 +158,21 @@ double JackknifeLogMean(std::vector<double>& a) {
 
 double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4) {
   int n = m2.size();
-	double mean = U4(m2, m4);
-	double err = 0.0;
+	std::vector<double> bin_means(n);
 
-	for (int i = 0; i < n; i++) {
+  for (int i = 0; i < n; i++) {
     std::vector<double> m2_del = m2;
     std::vector<double> m4_del = m4;
     m2_del.erase(m2_del.begin() + i);
     m4_del.erase(m4_del.begin() + i);
-    double diff = U4(m2_del, m4_del) - mean;
+    bin_means[i] = U4(m2_del, m4_del);
+  }
+
+  double mean = Mean(bin_means);
+	double err = 0.0;
+
+	for (int i = 0; i < n; i++) {
+    double diff = bin_means[i] - mean;
     err += diff * diff;
   }
 
@@ -170,15 +182,21 @@ double JackknifeU4(std::vector<double>& m2, std::vector<double>& m4) {
 
 double JackknifeSusceptibility(std::vector<double>& m2, std::vector<double>& m) {
   int n = m2.size();
-	double mean = Susceptibility(m2, m);
-	double err = 0.0;
+  std::vector<double> bin_means(n);
 
-	for (int i = 0; i < n; i++) {
+  for (int i = 0; i < n; i++) {
     std::vector<double> m2_del = m2;
     std::vector<double> m_del = m;
     m2_del.erase(m2_del.begin() + i);
     m_del.erase(m_del.begin() + i);
-    double diff = Susceptibility(m2_del, m_del) - mean;
+    bin_means[i] = Susceptibility(m2_del, m_del);
+  }
+
+	double mean = Mean(bin_means);
+	double err = 0.0;
+
+	for (int i = 0; i < n; i++) {
+    double diff = bin_means[i] - mean;
     err += diff * diff;
   }
 

@@ -1,4 +1,4 @@
-// ads3_crit.cc
+// phi4_ads3_crit.cc
 
 #include <getopt.h>
 #include <cmath>

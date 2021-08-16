@@ -1,4 +1,4 @@
-// ads3_ising_crit.cc
+// ising_ads3_crit.cc
 
 #include <getopt.h>
 #include <cmath>

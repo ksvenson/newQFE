@@ -17,7 +17,6 @@ int main(int argc, char* argv[]) {
   int Nt = 0;  // default to number of boundary sites
   double msq = -1.0;
   double lambda = 1.0;
-  double delta_plus = 2.0;
   int n_therm = 1000;
   int n_traj = 20000;
   int n_skip = 20;
@@ -31,7 +30,6 @@ int main(int argc, char* argv[]) {
     { "n_t", required_argument, 0, 'T' },
     { "msq", required_argument, 0, 'm' },
     { "lambda", required_argument, 0, 'l' },
-    { "delta_plus", required_argument, 0, 'D' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
@@ -41,7 +39,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:q:T:m:l:D:h:t:s:w:e:z:";
+  const char* short_options = "N:q:T:m:l:h:t:s:w:e:z:";
 
   while (true) {
 
@@ -55,7 +53,6 @@ int main(int argc, char* argv[]) {
       case 'T': Nt = atoi(optarg); break;
       case 'm': msq = std::stod(optarg); break;
       case 'l': lambda = std::stod(optarg); break;
-      case 'D': delta_plus = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;
@@ -83,24 +80,23 @@ int main(int argc, char* argv[]) {
 
   QfePhi4 field(&lattice, msq, lambda);
   field.metropolis_z = metropolis_z;
-  field.HotStart();
+  field.ColdStart();
   printf("msq: %.4f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
-  printf("delta_plus: %.4f\n", delta_plus);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
 
-  // add boundary mass counter terms
+  // set up dirichlet boundary conditions
   for (int i = 0; i < lattice.n_boundary; i++) {
     int s = lattice.boundary_sites[i];
-    double eps = lattice.eps[s];
-    field.msq_ct[s] = delta_plus / (eps * eps);
+    field.phi[s] = 0.0;
+    field.is_fixed[s] = true;
   }
 
   // measurements
-  std::vector<double> phi;  // average phi on the boundary (magnetization)
-  std::vector<double> phi2;  // average phi^2 on the boundary
-  std::vector<double> phi_abs;  // average abs(phi) on the boundary
+  std::vector<double> phi;  // average phi (magnetization)
+  std::vector<double> phi2;  // average phi^2
+  std::vector<double> phi_abs;  // average abs(phi)
   std::vector<double> action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
@@ -117,7 +113,7 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    cluster_size.Measure(double(cluster_size_sum) / double(lattice.n_sites));
+    cluster_size.Measure(double(cluster_size_sum) / double(lattice.n_bulk));
     accept_metropolis.Measure(metropolis_sum);
     accept_overrelax.Measure(field.Overrelax());
 
@@ -125,21 +121,20 @@ int main(int argc, char* argv[]) {
 
     demon.Measure(field.overrelax_demon);
 
-    // measure <phi> on the boundary
+    // measurements
     double phi_sum = 0.0;
     double phi2_sum = 0.0;
     double phi_abs_sum = 0.0;
-    for (int i = 0; i < lattice.n_boundary; i++) {
-      int s = lattice.boundary_sites[i];
-      double eps = lattice.eps[s];
-      double p1 = field.phi[s] * pow(2.0 * eps, -delta_plus);
+    for (int i = 0; i < lattice.n_bulk; i++) {
+      int s = lattice.bulk_sites[i];
+      double p1 = field.phi[s];
       phi_sum += p1 * lattice.sites[s].wt;
       phi2_sum += p1 * p1 * lattice.sites[s].wt;
       phi_abs_sum += fabs(p1) * lattice.sites[s].wt;
     }
-    phi.push_back(phi_sum / double(lattice.n_boundary));
-    phi2.push_back(phi2_sum / double(lattice.n_boundary));
-    phi_abs.push_back(phi_abs_sum / double(lattice.n_boundary));
+    phi.push_back(phi_sum / double(lattice.n_bulk));
+    phi2.push_back(phi2_sum / double(lattice.n_bulk));
+    phi_abs.push_back(phi_abs_sum / double(lattice.n_bulk));
 
     action.push_back(field.Action());
     printf("%06d %.12f %.4f %.4f %.12f %.4f\n", \
@@ -196,21 +191,21 @@ int main(int argc, char* argv[]) {
 
   FILE* file;
 
-  file = fopen("ads3_crit_boundary.dat", "a");
-  fprintf(file, "%d", lattice.n_layers);
-  fprintf(file, " %d", lattice.Nt);
-  fprintf(file, " %.12f", field.msq);
-  fprintf(file, " %.4f", field.lambda);
-  fprintf(file, " %+.12e %.12e", Mean(phi), JackknifeMean(phi));
-  fprintf(file, " %.12e %.12e", Mean(phi2), JackknifeMean(phi2));
-  fprintf(file, " %.12e %.12e", Mean(phi_abs), JackknifeMean(phi_abs));
-  fprintf(file, " %.12e %.12e", \
-      Susceptibility(phi2, phi_abs), JackknifeSusceptibility(phi2, phi_abs));
-  fprintf(file, " %.12e %.12e", Mean(mag2), JackknifeMean(mag2));
-  fprintf(file, " %.12e %.12e", Mean(mag_abs), JackknifeMean(mag_abs));
-  fprintf(file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));
-  fprintf(file, " %.12e %.12e", \
-      Susceptibility(mag2, mag_abs), JackknifeSusceptibility(mag2, mag_abs));
+  file = fopen("ads3_crit.dat", "a");
+  fprintf(file, "%d", lattice.n_layers);  // [0]
+  fprintf(file, " %d", lattice.n_bulk);  // [1]
+  fprintf(file, " %.12f", field.msq);  // [2]
+  fprintf(file, " %.4f", field.lambda);  // [3]
+  fprintf(file, " %+.12e %.12e", Mean(phi), JackknifeMean(phi));  // [4,5]
+  fprintf(file, " %.12e %.12e", Mean(phi2), JackknifeMean(phi2));  // [6,7]
+  fprintf(file, " %.12e %.12e", Mean(phi_abs), JackknifeMean(phi_abs));  // [8,9]
+  fprintf(file, " %.12e", Susceptibility(phi2, phi_abs));  // [10]
+  fprintf(file, " %.12e", JackknifeSusceptibility(phi2, phi_abs));  // [11]
+  fprintf(file, " %.12e %.12e", Mean(mag2), JackknifeMean(mag2));  // [12,13]
+  fprintf(file, " %.12e %.12e", Mean(mag_abs), JackknifeMean(mag_abs));  // [14,15]
+  fprintf(file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));  // [16,17]
+  fprintf(file, " %.12e", Susceptibility(mag2, mag_abs));  // [18]
+  fprintf(file, " %.12e", JackknifeSusceptibility(mag2, mag_abs));  // [19]
   fprintf(file, "\n");
   fclose(file);
 

@@ -161,6 +161,9 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
   n_bulk = layer_offset[n_layers];
   n_boundary = layer_size[n_layers];
 
+  // keep track of the distinct id between any two distinct sites
+  std::map<std::string, int> distinct_map;
+
   // calculate site coordinates in various forms
   for (int s = 0; s < n_sites; s++) {
     r[s] = std::abs(z[s]);
@@ -168,6 +171,19 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
     eps[s] = 1.0 - r[s];
     rho[s] = log((1.0 + r[s]) / (1.0 - r[s]));
     u[s] = I * (1.0 + z[s]) / (1.0 - z[s]);
+
+    // generate a key to identify the distinct site id
+    char key[50];
+    int rho_int = int(round(eps[s] * 1.0e9));
+    sprintf(key, "%d_%d", site_layers[s], rho_int);
+
+    if (distinct_map.find(key) == distinct_map.end()) {
+      // create a new distinct id
+      // printf("%s %d\n", key, n_distinct);
+      distinct_map[key] = n_distinct;
+      n_distinct++;
+    }
+    sites[s].id = distinct_map[key];
   }
 }
 

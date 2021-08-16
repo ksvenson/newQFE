@@ -82,6 +82,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt, double t_scale) :
       rho[s] = rho[s0];
       u[s] = u[s0];
       t[s] = tt;
+      sites[s].id = sites[s0].id;
     }
   }
 

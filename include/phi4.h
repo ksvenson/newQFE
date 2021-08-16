@@ -32,6 +32,7 @@ public:
   double metropolis_z;
   double overrelax_demon;
   std::vector<bool> is_clustered;  // keeps track of which sites are clustered
+  std::vector<bool> is_fixed;  // dirichlet boundary sites fixed to zero
   std::vector<int> wolff_cluster;  // array of clustered sites
 };
 
@@ -43,6 +44,7 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
   overrelax_demon = 0.0;
   phi.resize(lattice->sites.size(), 0.0);
   msq_ct.resize(lattice->sites.size(), 0.0);
+  is_fixed.resize(lattice->sites.size(), false);
   is_clustered.resize(lattice->sites.size());
 }
 
@@ -93,8 +95,10 @@ void QfePhi4::ColdStart() {
 // ref: N. Metropolis, et al., J. Chem. Phys. 21, 1087 (1953).
 
 double QfePhi4::Metropolis() {
-  int accept = 0;
+  int n_accept = 0;
+  int n_tries = 0;
   for (int s = 0; s < lattice->n_sites; s++) {
+    if (is_fixed[s]) continue;
     double phi_old = phi[s];
     double phi_old2 = phi_old * phi_old;
     double phi_old4 = phi_old2 * phi_old2;
@@ -125,12 +129,13 @@ double QfePhi4::Metropolis() {
     delta_S += (mass_term + interaction_term) * site->wt;
 
     // metropolis algorithm
+    n_tries++;
     if (delta_S <= 0.0 || lattice->rng.RandReal() < exp(-delta_S)) {
       phi[s] = phi_new;
-      accept++;
+      n_accept++;
     }
   }
-  return double(accept) / double(lattice->n_sites);
+  return double(n_accept) / double(n_tries);
 }
 
 // overrelaxation update algorithm
@@ -153,8 +158,10 @@ double QfePhi4::Metropolis() {
 // balance.
 
 double QfePhi4::Overrelax() {
-  int accept = 0;
+  int n_accept = 0;
+  int n_tries = 0;
   for (int s = 0; s < lattice->n_sites; s++) {
+    if (is_fixed[s]) continue;
     QfeSite* site = &lattice->sites[s];
     double phi_old = phi[s];
 
@@ -172,13 +179,14 @@ double QfePhi4::Overrelax() {
     double new_demon = overrelax_demon;
     new_demon += site->wt * lambda * (phi_old4 - phi_new4);
 
+    n_tries++;
     if (new_demon >= 0) {
       phi[s] = phi_new;
       overrelax_demon = new_demon;
-      accept++;
+      n_accept++;
     }
   }
-  return double(accept) / double(lattice->n_sites);
+  return double(n_accept) / double(n_tries);
 }
 
 // wolff cluster update algorithm
@@ -194,7 +202,10 @@ int QfePhi4::WolffUpdate() {
   std::stack<int> stack;
 
   // choose a random site and add it to the cluster
-  int s = lattice->rng.RandInt(0, lattice->n_sites - 1);
+  int s;
+  do {
+    s = lattice->rng.RandInt(0, lattice->n_sites - 1);
+  } while (is_fixed[s]);
   wolff_cluster.push_back(s);
   is_clustered[s] = true;
   stack.push(s);
@@ -214,10 +225,8 @@ int QfePhi4::WolffUpdate() {
       // skip if the site is already clustered
       if (is_clustered[s]) continue;
 
-      // skip if phi is zero at this site. this will most likely be a dummy
-      // site at a dirichlet boundary, but it's still correct even if it's
-      // not because the probability of adding it to the cluster will be zero
-      if (phi[s] == 0.0) continue;
+      // skip sites at dirichlet boundary
+      if (is_fixed[s]) continue;
 
       // skip if sign bits don't match
       if (std::signbit(value) != std::signbit(phi[s])) continue;

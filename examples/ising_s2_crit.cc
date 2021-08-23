@@ -83,8 +83,13 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   printf("ct_mult: %.12f\n", ct_mult);
-  for (int l = 0; l < lattice.n_links; l++) {
-    field.beta_ct[l] = ct_mult * lattice.links[l].wt;
+  for (int s = 0; s < lattice.n_sites; s++) {
+    // only put counterterms on the icosahedral vertices
+    if (lattice.sites[s].id != 0) continue;
+    for (int n = 0; n < lattice.sites[s].nn; n++) {
+      int l = lattice.sites[s].links[n];
+      field.beta_ct[l] = ct_mult * beta;
+    }
   }
 
   // get spherical harmonic combinations that mix with the A irrep of I

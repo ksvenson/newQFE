@@ -115,9 +115,12 @@ int QfeIsing::WolffUpdate() {
     s = stack.top();
     stack.pop();
 
+    // flip the spin
+    double value = spin[s];
+    spin[s] = -value;
+
     // try to add neighbors
     QfeSite* site = &lattice->sites[s];
-    double value = spin[s];
     for (int n = 0; n < site->nn; n++) {
       int l = site->links[n];
       double link_wt = lattice->links[l].wt;
@@ -137,10 +140,6 @@ int QfeIsing::WolffUpdate() {
         stack.push(s);
       }
     }
-  }
-
-  for (int s = 0; s < wolff_cluster.size(); s++) {
-    spin[wolff_cluster[s]] *= -1.0;
   }
 
   return wolff_cluster.size();

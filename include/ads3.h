@@ -138,6 +138,6 @@ double QfeLatticeAdS3::Sigma(int s1, int s2) {
 }
 
 double QfeLatticeAdS3::DeltaT(int s1, int s2) {
-  int dt = (Nt / 2) - abs(abs(t[s1] - t[s2]) - (Nt / 2));
+  int dt = (Nt - abs(2 * abs(t[s1] - t[s2]) - Nt)) / 2;
   return double(dt) / t_scale;
 }

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cmath>
 #include <complex>
 #include <vector>
@@ -59,9 +60,10 @@ public:
 QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
   this->n_layers = n_layers;
   this->q = q;
+  assert(q > 6);
 
-  double link_wt = 1.0;
-  double site_wt = 1.0;
+  const double link_wt = 1.0;
+  const double site_wt = 1.0;
 
   // create site 0 at the origin
   ResizeSites(1);

@@ -1,0 +1,68 @@
+// ising.h
+
+#pragma once
+
+#include <math.h>
+
+using namespace  std;
+
+struct param {
+  int L ;
+  int latVol ;
+  int Niter ;
+  double beta ;
+  double axis[3][2];  // a,b,c vectors
+  double abc[3];
+  double Kfem[3];   // FEM weight on positive links
+  int *nn[6];      // Set up nn table nn[site][mu]
+  double A;
+  double R;
+  int *cluster ;
+  int *stack ;
+  int NumClusters ;
+};
+
+  struct param p;
+// BEGIN SET PARAMETERS   MOVE TO param.h file
+  p.L =  64;
+  p.latVol = p.L * p.L;
+  // p.beta = 0.27465307; // log(3)/4 
+  p.beta =  0.951426150896; // FEM scaled 2.0 *sqrt(3) * log(3)/4.0
+  int spin[p.latVol];
+  double  vec[][2] = {
+    {1.0,0.0},
+    {-0.5,sqrt(3.)/2.0},
+    {- 0.5,- sqrt(3.)/2.0}
+  };
+
+  for(int i=0; i<3; i++) {
+   for(int j=0;j<2;j++) 
+     p.axis[i][j] = vec[i][j];
+   };
+  
+  for(int i = 0; i< 3; i++){
+    p.abc[i] = sqrt( p.axis[i][0] * p.axis[i][0]+ p.axis[i][1] * p.axis[i][1] );
+    printf("abc = %.12f \n" , p.abc[i]);
+  }
+  p.A = Area(p);  printf("Area =  %.20f \n", p.A);
+  p.R = Rcircum(p);  printf("Rcircum =  %.12f \n", p.R);
+
+  for(int mu = 0; mu <3; mu++) {
+    //  p.Kfem[mu] = 0.5 * sqrt((4.0 * p.R * p.R)/(p.abc[mu] * p.abc[mu]) -1.0 );
+    p.Kfem[mu] = 0.5 * sqrt((4.0 * p.R * p.R)/(p.abc[mu] * p.abc[mu]) -1.0 );
+    printf("p.Kfem = %.12f ",  p.Kfem[mu]);
+  }
+    
+ // END SET PARAMETERS parm p;
+double Area( param p)
+{
+  return (1.0/4.0)*sqrt( (p.abc[0] + p.abc[1] + p.abc[2]) * (- p.abc[0] + p.abc[1] + p.abc[2]) *
+			 (p.abc[0] - p.abc[1] + p.abc[2]) * (  p.abc[0] + p.abc[1] - p.abc[2]) );
+}
+
+double Rcircum(param p)
+{
+  printf("Area =  %f \n", p.A);
+  return (p.abc[0] * p.abc[1] * p.abc[2])/( 4.0 * p.A);
+}
+

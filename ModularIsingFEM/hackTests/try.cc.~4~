@@ -1,0 +1,26 @@
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include <stack>
+#include <vector>
+
+using namespace  std;
+
+int main( )
+{
+  int latVal = 8;
+
+  bool is_cluster[latVal];
+  for(int i =0 ; i< latVal;i++) {
+    is_cluster[i] = true;
+    printf(" is_cluster %d \n",is_cluster[i]);
+}
+
+  
+  
+  
+cout << "HI" << endl;
+
+return 0;
+}

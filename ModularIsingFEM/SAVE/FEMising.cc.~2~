@@ -1,0 +1,70 @@
+/* 
+(1) Goal Maximally Simple FEM Ising on a flat Triangular lattice
+with arbitray length {a,b,c} = axes[3]
+
+(2) Model of Efficient Data Parallel Code.
+Do Metropolis, Wolff and Swendens Wang by HK algorithm.
+
+(3) NO C++ but take from Evan element when and if useful
+from newFEM/ising_s2_crit. and later for our old FEM routines. 
+*/
+
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include "ising.h"
+
+using namespace  std;
+
+int main()
+{  
+  struct param p;
+  p.L =  4;
+  p.latVol = p.L * p.L;
+  p.beta =  0.41;
+  int spin[p.latVol];
+  double  vec[][2] = {
+    {1.0,0.0},
+    {-0.5,sqrt(3.)/2.0},
+    {- 0.5,- sqrt(3.)/2.0}
+  };
+
+  for(int i=0; i<3; i++) {
+   for(int j=0;j<2;j++) 
+     p.axis[i][j] = vec[i][j];
+   };
+  
+  for(int i = 0; i< 3; i++){
+    p.abc[i] = sqrt( p.axis[i][0] * p.axis[i][0]+ p.axis[i][1] * p.axis[i][1] );
+    printf("abc = %.12f \n" , p.abc[i]);
+  }
+
+  printf(" Area Direct %.12f \n", (1.0/4.0)* sqrt( (p.abc[0] + p.abc[1] + p.abc[2]) * (- p.abc[0] + p.abc[1] + p.abc[2]) *
+						(p.abc[0] -  p.abc[1] + p.abc[2]) * (p.abc[0] + p.abc[1] - p.abc[2]) ) );
+  p.A = Area(p);  printf("Area =  %.12f \n", p.A);
+  p.R = Rcircum(p);  printf("Rcircum =  %.12f \n", p.R);
+  
+
+ 
+#if 0 
+  for(int site1 = 0; site1 < p.latVol; site1++){
+    for(int site2 = 0; site2 < p.latVol; site2++)
+      {
+	printf(" site1 = %d, site2 = %d  dist = %f \n", site1, site2, distance(site1, site2,  p) );
+      }
+  }
+#endif
+
+  HotStart(spin, p);
+  ColdStart(spin,p);
+  
+  for(int iter = 0; iter < 8; iter++)
+    { 
+   printf(" %.12f  \n",  Metropolis(spin,  p));
+    };
+  
+  return 0;
+}
+
+

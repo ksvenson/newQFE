@@ -1,0 +1,36 @@
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include <stack>
+#include <vector>
+#include "rng.h"
+
+using namespace  std;
+
+int main( )
+{
+  int latVol = 8;
+    bool is_cluster[latVol];
+    QfeRng rng(137);
+  
+  for(int i =0 ; i< latVol;i++) {
+    is_cluster[i] = true;
+    printf(" is_cluster %d \n",is_cluster[i]);
+  }
+
+  for(int i =0 ; i< latVol;i++) {
+    printf(" rng.RandReal() = %.12f \n",  rng.RandReal());
+
+    printf(" rng.RandInt(0, p.latVol - 1) = %d \n",rng.RandInt(0, latVol - 1)); 
+  }
+  
+  int pi = 31;
+
+  // printf(" pi =   %d  latVol =  %d  pi/latVol =  %d double(pi)/latVol =  %.12f  pi/double(latVol) =  %.12f\n", pi, latVol, pi/latVol,double(pi)/latVol, pi/double(latVol));
+  
+  
+cout << "HI" << endl;
+
+return 0;
+}

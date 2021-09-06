@@ -1,0 +1,210 @@
+// ising.h
+
+#pragma once
+
+#include <math.h>
+#include <stack>
+#include "rng.h"
+
+using namespace  std;
+
+struct param {
+  int L ;
+  int latVol ;
+  int Niter ;
+  double beta ;
+  double axis[3][2];  // a,b,c vectors
+  double abc[3];
+  double Kfem[3];   // FEM weight on positive links
+  int *nn[6];      // Set up nn table nn[site][mu]
+  double A;
+  double R;
+  int *cluster ;
+  int *stack ;
+  int NumClusters ;
+};
+
+double Area( param p)
+{
+  printf("sqrt 10 = %.12f \n", sqrt(10.0));
+  return (1.0/4.0)*sqrt( (p.abc[0] + p.abc[1] + p.abc[2]) * (- p.abc[0] + p.abc[1] + p.abc[2]) *
+			 (p.abc[0] - p.abc[1] + p.abc[2]) * (  p.abc[0] + p.abc[1] - p.abc[2]) );
+}
+
+double Rcircum(param p)
+{
+  printf("Area =  %f \n", p.A);
+  return (p.abc[0] * p.abc[1] * p.abc[2])/( 4.0 );
+}
+
+QfeRng rng;
+
+void HotStart(int *spin, param p) {
+  for (int site = 0; site < p.latVol; site++) {
+    spin[site] = rng.RandInt(0, 1) * 2 - 1;
+  }
+}
+
+void ColdStart(int *spin, param p) {
+  for (int site = 0; site < p.latVol; site++) {
+    spin[site] = 1;
+}
+}
+  
+ /*********
+
+Efficient Indexing 
+
+int xp = (x+1)%p.L; 
+int yp = (y+1)%p.L;
+int  site = x + p.L * y;
+int nn = spin[xp + p.L * y] + spin[x + p.L * yp] +  spin[xp + p.L * yp];
+action -= p.beta  * spin[site] *  nn;
+
+Can this be done with
+
+inline int nn(int x, int y, int mu)
+{
+  // mu = 0,1,2,3,4,5 is xp, yp, xyp, -  xp, -  yp,- xyp  
+  return  x + 
+  }
+
+*********/
+
+double IsingAction(int *spin, param p) {
+  double action = 0.0;
+  // sum over links
+  for (int x = 0; x < p.L ; x++) {
+    for (int y = 0; y < p.L; y++) {
+      int nn = spin[(x+1)%p.L  + p.L * y] + spin[x + p.L * ((y+1)%p.L)]
+	+  spin[(x+1)%p.L + p.L * ((y+1)%p.L)];
+     action -=  p.beta  * spin[ x + p.L * y] *  nn;
+      
+    }
+  } 
+  return action;
+}
+
+/* Tricky Geometry: Need to sum rvec = delta_x avec + delta_y cvec  and
+clip rvec to be inside a hexagon and the cal sqrt(rvec.rvec).
+
+Rule x \in [- L/2,L/2]  &  y \in [-L/2,L/2]  & x y > 0
+
+*/
+
+double distance(int site1, int site2, param p)
+{
+  double rvec[2];
+  double delta_x = (site2%p.L - site1%p.L)/2.0;
+  double delta_y = ((site2/p.L) - (site1/p.L))/2.0; 
+  printf(" site1 - %d, site2 = %d, delta_x = %f, delta_y = %f ", site1, site2, delta_x, delta_y);
+    
+    if(  delta_x *  delta_y >  0)
+      {
+	rvec[0] =  delta_x * p.axis[0][0] +  delta_y * p.axis[1][0];
+	rvec[1] =  delta_x * p.axis[0][1] +  delta_y * p.axis[1][1];
+      }
+    else
+      {
+	rvec[0] =  delta_x * p.axis[0][0] -   delta_y * p.axis[1][0];
+	rvec[1] =  delta_x * p.axis[0][1] -  delta_y * p.axis[1][1];	
+      }
+  return sqrt( rvec[0]*rvec[0] + rvec[1]*rvec[1]);
+}  
+
+
+double MeanSpin(int *spin, param p) {
+  double m = 0.0;
+  for (int s = 0; s < p.latVol; s++) {
+    m += spin[s];
+  }
+  return m;
+}
+
+
+
+// metropolis update algorithm
+// ref: N. Metropolis, et al., J. Chem. Phys. 21, 1087 (1953).
+
+double Metropolis(int *spin, param p) {
+  int accept = 0;
+  double delta_S = 0.0;
+  double h = 0.0;
+  
+  // sum over links
+  for (int x = 0; x < p.L ; x++) {
+    for (int y = 0; y < p.L; y++) {
+      nn = 0.0;
+      // sum over links connected to this site
+      h +=   spin[(x+1)%p.L  + p.L * y]   +  spin[(x-1 + p.L)%p.L  + p.L * y];
+      h  +=         spin[x + p.L * ((y + 1)%p.L)]   +  spin[x + p.L * ((y- 1 + p.L)%p.L)];
+      h  +=  spin[(x+1)%p.L + p.L * ((y + 1 )%p.L)] + spin[(x-1 + p.L)%p.L + p.L * ((y- 1 +p.L)%p.L)];
+      
+       delta_S = -2.0 * spin[ x + p.L * y] * h;    
+      
+      // metropolis algorithm: Minimize delta_S =  S_final -  S_initial
+      if (delta_S <= 0.0 ||rng.RandReal() < exp(-delta_S)) {
+	spin[ x + p.L * y] *= -1.0;
+	accept++;
+      }
+    }
+  }
+    return double(accept) / double(p.latVol);
+  }
+
+#if 0
+// wolff cluster update algorithm
+// ref: U. Wolff, Phys. Rev. Lett. 62, 361 (1989).
+
+int WolffUpdate() {
+
+  // remove all sites from the cluster
+  std::fill(is_clustered.begin(), is_clustered.end(), false);
+  wolff_cluster.clear();
+
+  // create the stack
+  std::stack<int> stack;
+
+  // choose a random site and add it to the cluster
+  int s = lattice->rng.RandInt(0, lattice->n_sites - 1);
+  wolff_cluster.push_back(s);
+  is_clustered[s] = true;
+  stack.push(s);
+
+  while (stack.size() != 0) {
+    s = stack.top();
+    stack.pop();
+
+    // try to add neighbors
+    QfeSite* site = &lattice->sites[s];
+    double value = spin[s];
+    for (int n = 0; n < site->nn; n++) {
+      int l = site->links[n];
+      double link_wt = lattice->links[l].wt;
+      s = site->neighbors[n];
+
+      // skip if the site is already clustered
+      if (is_clustered[s]) continue;
+
+      // skip if sign bits don't match
+      if (std::signbit(value) != std::signbit(spin[s])) continue;
+
+      double prob = 1.0 - exp(-2.0 * (beta + beta_ct[l]) * link_wt);
+      if (lattice->rng.RandReal() < prob) {
+        // add the site to the cluster
+        wolff_cluster.push_back(s);
+        is_clustered[s] = true;
+        stack.push(s);
+      }
+    }
+  }
+
+  for (int s = 0; s < wolff_cluster.size(); s++) {
+    spin[wolff_cluster[s]] *= -1.0;
+  }
+
+  return wolff_cluster.size();
+}
+#endif
+
+

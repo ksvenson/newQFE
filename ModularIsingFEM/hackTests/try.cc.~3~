@@ -1,0 +1,15 @@
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include <stack>
+#include <vector>
+
+using namespace  std;
+
+int main( )
+{
+cout << "HI" << endl;
+
+return 0;
+}

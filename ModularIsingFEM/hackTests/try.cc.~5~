@@ -1,0 +1,28 @@
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include <stack>
+#include <vector>
+
+using namespace  std;
+
+int main( )
+{
+  int latVol = 8;
+
+  bool is_cluster[latVol];
+  for(int i =0 ; i< latVol;i++) {
+    is_cluster[i] = true;
+    printf(" is_cluster %d \n",is_cluster[i]);
+}
+
+  int pi = 3;
+
+  printf(" pi =   %d  latVol =  %d  pi/latVol =  %.12f  pi/(double)latVol =  %.12f\n", pi, latVol, pi/latVol, pi/(double)latVol);
+  
+  
+cout << "HI" << endl;
+
+return 0;
+}

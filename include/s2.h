@@ -33,9 +33,12 @@ public:
   Complex GetYlm(int s, int l, int m);
   double CosTheta(int s1, int s2);
   void PrintCoordinates();
+  void UpdateTriangleCoordinates();
 
   // site coordinates
   std::vector<Eigen::Vector3d> r;
+  std::vector<double> tri2;  // s^2 + t^2 + u^2
+  std::vector<double> tri3;  // stu
   std::vector<std::vector<Complex>> ylm;  // spherical harmonics
   std::vector<int> antipode;  // antipode of each site (0 by default)
 };
@@ -569,5 +572,50 @@ void QfeLatticeS2::PrintCoordinates() {
   for (int s = 0; s < n_sites; s++) {
     printf("{%.12f,%.12f,%.12f}", r[s].x(), r[s].y(), r[s].z());
     printf("%c\n", s == (n_sites - 1) ? '}' : ',');
+  }
+}
+
+/**
+ * @brief For each distinct group, calculate quantities that are invariant
+ * under the symmetries of the triangle group. Values are normalized to 1
+ * at the polyhedral vertices. The quadratic and cubic invariants are
+ * s^2 + t^2 + u^2 and stu where s, t, and u are the coordinates of the site
+ * projected onto the axes of the triangular polyhedral faces. This function
+ * should be called after refining the polyhedral faces but *before* calling
+ * Inflate().
+ */
+
+void QfeLatticeS2::UpdateTriangleCoordinates() {
+  UpdateDistinct();
+  tri2.resize(n_distinct);
+  tri3.resize(n_distinct);
+
+  // center of first polyhedral face
+  Eigen::Vector3d c = (r[0] + r[1] + r[2]) / 3.0;
+
+  // vectors along two axes of the first polyhedral face
+  Eigen::Vector3d v_s = r[0] - c;
+  Eigen::Vector3d v_t = r[1] - c;
+
+  // distance between center and polyhedral vertices
+  double norm_v = v_s.squaredNorm();
+
+  for (int d = 0; d < n_distinct; d++) {
+
+    // the first distinct point should be in the first polyhedral face
+    int s = distinct_first[d];
+
+    // coordinate of lattice point in polyhedral face
+    Eigen::Vector3d x = r[s] - c;
+
+    // project coordinates onto triangular axes
+    double u_s = v_s.dot(x) / norm_v;
+    double u_t = v_t.dot(x) / norm_v;
+
+    // quadratic triangular invariant s^2 + t^2 + u^2
+    tri2[d] = (u_s * u_s + u_s * u_t + u_t * u_t) / 0.75;
+
+    // cubic triangular invariant stu
+    tri3[d] = -4.0 * u_s * u_t * (u_s + u_t);
   }
 }

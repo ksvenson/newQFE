@@ -19,8 +19,12 @@ int main(int argc, char* argv[]) {
   int q = 5;
   double msq = -21.96;
   double lambda = 10.0;
-  double ct_mult = 1.0;
+  double ct_mult = 0.0;
   const char* ct_dir = "./ct";
+  double tri2_wt = 0.0;
+  double tri3_wt = 0.0;
+  double tri4_wt = 0.0;
+  double tri5_wt = 0.0;
   int n_therm = 2000;
   int n_traj = 100000;
   int n_skip = 20;
@@ -35,6 +39,10 @@ int main(int argc, char* argv[]) {
     { "lambda", required_argument, 0, 'l' },
     { "ct_mult", required_argument, 0, 'c' },
     { "ct_dir", required_argument, 0, 'd' },
+    { "tri2_wt", required_argument, 0, '2' },
+    { "tri3_wt", required_argument, 0, '3' },
+    { "tri4_wt", required_argument, 0, '4' },
+    { "tri5_wt", required_argument, 0, '5' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
@@ -44,7 +52,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:q:m:l:c:d:h:t:s:w:e:z:";
+  const char* short_options = "N:q:m:l:c:d:2:3:4:5:h:t:s:w:e:z:";
 
   while (true) {
 
@@ -59,6 +67,10 @@ int main(int argc, char* argv[]) {
       case 'l': lambda = std::stod(optarg); break;
       case 'c': ct_mult = std::stod(optarg); break;
       case 'd': ct_dir = optarg; break;
+      case '2': tri2_wt = std::stod(optarg); break;
+      case '3': tri3_wt = std::stod(optarg); break;
+      case '4': tri4_wt = std::stod(optarg); break;
+      case '5': tri5_wt = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;
@@ -77,6 +89,7 @@ int main(int argc, char* argv[]) {
 
   QfeLatticeS2 lattice(q);
   lattice.Refine2D(n_refine);
+  lattice.UpdateTriangleCoordinates();
   lattice.Inflate();
   lattice.UpdateWeights();
   lattice.UpdateDistinct();
@@ -110,15 +123,33 @@ int main(int argc, char* argv[]) {
   fclose(ct_file);
 
   // apply the counter terms to each site
-  if (ct_mult == -1.0) {
-    // use "exact" non-perturbative ct
-    const double Q = 0.068916111927724006189L;  // sqrt(3) / 8pi
-    ct_mult = exp(-Q * field.lambda);
-  }
   printf("ct_mult: %.12f\n", ct_mult);
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
     field.msq_ct[s] += -12.0 * field.lambda * ct[id] * ct_mult;
+  }
+
+  // apply triangular coordinate counterterms
+  printf("tri2_wt: %.12f\n", tri2_wt);
+  printf("tri3_wt: %.12f\n", tri3_wt);
+  printf("tri4_wt: %.12f\n", tri4_wt);
+  printf("tri5_wt: %.12f\n", tri5_wt);
+  double ct_sum = 0.0;
+  for (int s = 0; s < lattice.n_sites; s++) {
+    int id = lattice.sites[s].id;
+    double tri2 = lattice.tri2[id];
+    double tri3 = lattice.tri3[id];
+    field.msq_ct[s] += tri2_wt * tri2;
+    field.msq_ct[s] += tri3_wt * tri3;
+    field.msq_ct[s] += tri4_wt * tri2 * tri2;
+    field.msq_ct[s] += tri5_wt * tri2 * tri3;
+    ct_sum += field.msq_ct[s] * lattice.sites[s].wt;
+  }
+
+  // subtract out the position-independent part of the counterterms
+  double ct_mean = ct_sum / double(lattice.n_sites);
+  for (int s = 0; s < lattice.n_sites; s++) {
+    field.msq_ct[s] -= ct_mean;
   }
 
   // get spherical harmonic combinations that mix with the A irrep of I
@@ -309,10 +340,19 @@ int main(int argc, char* argv[]) {
   fprintf(out_file, " %.12e %.12e", Q6.Mean(), Q6.Error());
   fprintf(out_file, " %.12e %.12e", Q10.Mean(), Q10.Error());
   fprintf(out_file, " %.12e %.12e", Q12.Mean(), Q12.Error());
+  fprintf(out_file, " %.4f", tri2_wt);
+  fprintf(out_file, " %.4f", tri3_wt);
+  fprintf(out_file, " %.4f", tri4_wt);
+  fprintf(out_file, " %.4f", tri5_wt);
   fprintf(out_file, "\n");
   fclose(out_file);
 
-  sprintf(path, "distinct_%d_%d_%04d.dat", n_refine, q, int(round(ct_mult * 1000)));
+  sprintf(path, "distinct_s%d_q%d_%04d_%04d_%04d_%04d.dat", \
+      n_refine, q, \
+      int(round(tri2_wt * 1000)), \
+      int(round(tri3_wt * 1000)), \
+      int(round(tri4_wt * 1000)), \
+      int(round(tri5_wt * 1000)));
   out_file = fopen(path, "w");
 
   for (int i = 0; i < lattice.n_distinct; i++) {

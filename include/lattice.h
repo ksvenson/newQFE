@@ -41,6 +41,7 @@ class QfeLattice {
 public:
   QfeLattice();
   void InitTriangle(int N, double skew = 0.0);
+  void InitTriangle(int N, double wt1, double wt2, double wt3);
   virtual void ResizeSites(int n_sites);
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   int FindLink(int a, int b);
@@ -90,6 +91,27 @@ QfeLattice::QfeLattice() {
 
 void QfeLattice::InitTriangle(int N, double skew) {
 
+  // if skew = 0.0, all weights are the same (equilateral triangles)
+  // if skew = 1.0, the middle link weight is zero (right triangles)
+  // average weight is 2/3
+  double wt1 = (2.0 + skew) / 3.0;
+  double wt2 = (2.0 - 2.0 * skew) / 3.0;
+  double wt3 = wt1;
+
+  InitTriangle(N, wt1, wt2, wt3);
+}
+
+/**
+ * @brief Creates a flat triangulated lattice with periodic boundary
+ * conditions.
+ *
+ * @param N Lattice size
+ * @param wtx The weights given to links in the 3 directions of
+ * the triangular lattice
+ */
+
+void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
+
   // create sites
   ResizeSites(N * N);
 
@@ -102,13 +124,6 @@ void QfeLattice::InitTriangle(int N, double skew) {
 
   // create links
   links.clear();
-
-  // if skew = 0.0, all weights are the same (equilateral triangles)
-  // if skew = 1.0, the middle link weight is zero (right triangles)
-  // average weight is 2/3
-  double wt1 = (2.0 + skew) / 3.0;
-  double wt2 = (2.0 - 2.0 * skew) / 3.0;
-  double wt3 = wt1;
 
   for (int s = 0; s < n_sites; s++) {
     int x = s % N;

@@ -1,6 +1,7 @@
 // ising_flat_crit.cc
 
 #include <getopt.h>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <vector>

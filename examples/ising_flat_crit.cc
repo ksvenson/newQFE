@@ -1,5 +1,6 @@
 // ising_flat_crit.cc
 
+#include <getopt.h>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -7,69 +8,101 @@
 #include "statistics.h"
 
 double tri_crit(double k1, double k2, double k3, double beta) {
-  double v1 = tanh(beta * k1);
-  double v2 = tanh(beta * k2);
-  double v3 = tanh(beta * k3);
-  double n = (1.0 - v1 * v1) * (1.0 - v2 * v2) * (1.0 - v3 * v3);
-  double d = (1.0 + v1 * v2 * v3) * (v1 + v2 * v3) * (v2 + v3 * v1) * (v3 + v1 * v2);
+  double p1 = exp(-2.0 * beta * (k2 + k3));
+  double p2 = exp(-2.0 * beta * (k3 + k1));
+  double p3 = exp(-2.0 * beta * (k1 + k2));
 
-  double v12 = v1 * v2;
-  double v13 = v1 * v3;
-  double v23 = v2 * v3;
-  double v1p = (v1 * v1 + 1.0);
-  double v1m = (v1 * v1 - 1.0);
-  double v2p = (v2 * v2 + 1.0);
-  double v2m = (v2 * v2 - 1.0);
-  double v3p = (v3 * v3 + 1.0);
-  double v3m = (v3 * v3 - 1.0);
-
-  double c1 = 2.0 * (v23 + v12 * v13) + v1 * v2p * v3p;
-  double c2 = 2.0 * (v13 + v12 * v23) + v1p * v2 * v3p;
-  double c3 = 2.0 * (v12 + v13 * v23) + v1p * v2p * v3;
-
-  double s1 = 1.0 / cosh(beta * k1);
-  double A1 = -s1 * s1 * v2m * v3m * c2 * c3;
-
-  double s2 = 1.0 / cosh(beta * k2);
-  double A2 = -s2 * s2 * v1m * v3m * c1 * c3;
-
-  double s3 = 1.0 / cosh(beta * k3);
-  double A3 = -s3 * s3 * v1m * v2m * c1 * c2;
-
-  double crit = 0.25 * n / sqrt(d) - 1.0;
-  double d_crit = 0.125 * (A1 + A2 + A3) / pow(d, 1.5);
-
-  return crit / d_crit;
+  // calculate the residual and its derivative wrt beta
+  double r1 = p1 + p2 + p3 - 1.0;
+  double r2 = -2.0 * (p1 * (k2 + k3) + p2 * (k3 + k1) + p3 * (k1 + k2));
+  return r1 / r2;
 }
 
 double find_crit(double k1, double k2, double k3) {
-  double beta = 0.4;
 
+  // normalize the couplings
+  double k_mean = (k1 + k2 + k3) / 3.0;
+  k1 /= k_mean;
+  k2 /= k_mean;
+  k3 /= k_mean;
+
+  // start with the equilateral critical value
+  double beta = 0.267949192431123;  // 2 - sqrt(3)
+
+  // do 100 iterations of newton's method
+  // it normally converges in less that 10 iterations
   for (int i = 0; i < 100; i++) {
-    beta = beta - tri_crit(k1, k2, k3, beta);
+    beta -= tri_crit(k1, k2, k3, beta);
+    // printf("%04d %.20f\n", i, beta);
   }
-  return beta;
+
+  // return the unnormalized critical value of beta
+  return beta / k_mean;
 }
 
 int main(int argc, char* argv[]) {
 
-  int N = 128;
+  int N = 32;
   printf("N: %d\n", N);
 
-  // choose weights for the 3 directions and calculate the critical
-  // value of beta
-  double k1 = 0.5;
+  // choose weights for the 3 directions and calculate beta critical
+  double k1 = 1.0;
   double k2 = 1.0;
-  double k3 = 2.0;
-  double beta = find_crit(k1, k2, k3);
-  printf("beta: %.12f\n", beta);
+  double k3 = 1.0;
+
+  int n_therm = 2000;
+  int n_traj = 50000;
+  int n_skip = 20;
+  int n_wolff = 3;
+  int n_metropolis = 5;
+
+  const struct option long_options[] = {
+    { "n_lattice", required_argument, 0, 'N' },
+    { "k1", required_argument, 0, 'a' },
+    { "k2", required_argument, 0, 'b' },
+    { "k3", required_argument, 0, 'c' },
+    { "n_therm", required_argument, 0, 'h' },
+    { "n_traj", required_argument, 0, 't' },
+    { "n_skip", required_argument, 0, 's' },
+    { "n_wolff", required_argument, 0, 'w' },
+    { "n_metropolis", required_argument, 0, 'e' },
+    { 0, 0, 0, 0 }
+  };
+
+  const char* short_options = "N:a:b:c:h:t:s:w:e:";
+
+  while (true) {
+
+    int o = 0;
+    int c = getopt_long(argc, argv, short_options, long_options, &o);
+    if (c == -1) break;
+
+    switch (c) {
+      case 'N': N = atoi(optarg); break;
+      case 'a': k1 = std::stod(optarg); break;
+      case 'b': k2 = std::stod(optarg); break;
+      case 'c': k3 = std::stod(optarg); break;
+      case 'h': n_therm = atoi(optarg); break;
+      case 't': n_traj = atoi(optarg); break;
+      case 's': n_skip = atoi(optarg); break;
+      case 'w': n_wolff = atoi(optarg); break;
+      case 'e': n_metropolis = atoi(optarg); break;
+      default: break;
+    }
+  }
+
+  printf("N: %d\n", N);
+  printf("k1: %.12f\n", k1);
+  printf("k2: %.12f\n", k2);
+  printf("k3: %.12f\n", k3);
 
   QfeLattice lattice;
   lattice.InitTriangle(N, k1, k2, k3);
 
-  QfeIsing field(&lattice, beta);
+  QfeIsing field(&lattice, find_crit(k1, k2, k3));
   field.HotStart();
 
+  printf("beta: %.12f\n", field.beta);
   printf("initial action: %.12f\n", field.Action());
 
   // correlator measurements in each direction
@@ -86,11 +119,6 @@ int main(int argc, char* argv[]) {
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
 
-  int n_therm = 1000;
-  int n_traj = 20000;
-  int n_skip = 20;
-  int n_wolff = 3;
-  int n_metropolis = 5;
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     int cluster_size_sum = 0;

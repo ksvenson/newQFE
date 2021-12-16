@@ -4,9 +4,12 @@
 
 #include <cmath>
 #include <complex>
+#include <deque>
 #include <vector>
 
 typedef std::complex<double> Complex;
+
+double AutocorrTime(std::vector<double>& a);
 
 class QfeMeasReal {
 
@@ -16,11 +19,15 @@ public:
   void Measure(double value);
   double Mean();
   double Error();
+  double AutocorrFront();
+  double AutocorrBack();
 
   double sum;  // sum of measurements
   double sum2;  // sum of squared measurements
   double last;  // most recent measurement
   int n;  // number of measurements
+  std::vector<double> first_1000;  // first 1000 measurements
+  std::deque<double> last_1000;  // last 1000 measurements
 };
 
 QfeMeasReal::QfeMeasReal() {
@@ -32,6 +39,8 @@ void QfeMeasReal::Reset() {
   sum2 = 0.0;
   last = 0.0;
   n = 0;
+  first_1000.clear();
+  last_1000.clear();
 }
 
 void QfeMeasReal::Measure(double value) {
@@ -39,6 +48,10 @@ void QfeMeasReal::Measure(double value) {
   sum2 += value * value;
   last = value;
   n++;
+
+  if (first_1000.size() < 1000) first_1000.push_back(value);
+  last_1000.push_back(value);
+  if (last_1000.size() > 1000) last_1000.pop_front();
 }
 
 double QfeMeasReal::Mean() {
@@ -51,6 +64,20 @@ double QfeMeasReal::Error() {
   return sqrt((mean2 - mean * mean) / double(n));
 }
 
+double QfeMeasReal::AutocorrFront() {
+  return AutocorrTime(first_1000);
+}
+
+double QfeMeasReal::AutocorrBack() {
+  // convert last_1000 to a vector
+  std::deque<double>::iterator it = last_1000.begin();
+  std::vector<double> a;
+  while (it != last_1000.end()) {
+    a.push_back(*it++);
+  }
+  return AutocorrTime(a);
+}
+
 class QfeMeasComplex {
 
 public:
@@ -59,6 +86,8 @@ public:
   void Measure(Complex value);
   Complex Mean();
   Complex Error();
+  double AutocorrFront();
+  double AutocorrBack();
 
   QfeMeasReal real_part;
   QfeMeasReal imag_part;
@@ -87,6 +116,14 @@ Complex QfeMeasComplex::Mean() {
 
 Complex QfeMeasComplex::Error() {
   return Complex(real_part.Error(), imag_part.Error());
+}
+
+double QfeMeasComplex::AutocorrFront() {
+  return fmax(real_part.AutocorrFront(), imag_part.AutocorrFront());
+}
+
+double QfeMeasComplex::AutocorrBack() {
+  return fmax(real_part.AutocorrBack(), imag_part.AutocorrBack());
 }
 
 // TODO: come up with a way to consolidate these so it's not just the same

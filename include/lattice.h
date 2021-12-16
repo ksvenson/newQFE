@@ -40,8 +40,10 @@ class QfeLattice {
 
 public:
   QfeLattice();
+  void SeedRng(unsigned int seed);
   void InitTriangle(int N, double skew = 0.0);
   void InitTriangle(int N, double wt1, double wt2, double wt3);
+  void InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3);
   virtual void ResizeSites(int n_sites);
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   int FindLink(int a, int b);
@@ -79,6 +81,16 @@ QfeLattice::QfeLattice() {
 }
 
 /**
+ * @brief Reset and seed the random number generator
+ *
+ * @param seed Random number generator seed value
+ */
+
+void QfeLattice::SeedRng(unsigned int seed) {
+  rng = QfeRng(seed);
+}
+
+/**
  * @brief Creates a flat triangulated lattice with periodic boundary
  * conditions.
  *
@@ -112,8 +124,23 @@ void QfeLattice::InitTriangle(int N, double skew) {
 
 void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
 
+  InitTriangle(N, N, wt1, wt2, wt3);
+}
+
+/**
+ * @brief Creates a flat triangulated lattice with periodic boundary
+ * conditions. Lattice dimensions can be asymmetrical.
+ *
+ * @param N Lattice size (x or short direction)
+ * @param Nt Lattice size (y or long direction)
+ * @param wtx The weights given to links in the 3 directions of
+ * the triangular lattice
+ */
+
+void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3) {
+
   // create sites
-  ResizeSites(N * N);
+  ResizeSites(Nx * Ny);
 
   // set all site weights to 1.0
   for (int s = 0; s < n_sites; s++) {
@@ -126,16 +153,17 @@ void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
   links.clear();
 
   for (int s = 0; s < n_sites; s++) {
-    int x = s % N;
-    int y = s / N;
+    int x = s % Nx;
+    int y = s / Nx;
 
     // add links in the "forward" direction (3 links per site)
     // each link will end up with 6 neighbors
-    int xp1 = (x + 1) % N;
-    int yp1 = (y + 1) % N;
-    AddLink(s, xp1 + y * N, wt1);
-    AddLink(s, x + yp1 * N, wt2);
-    AddLink(s, xp1 + yp1 * N, wt3);
+    int xp1 = (x + 1) % Nx;
+    int yp1 = (y + 1) % Ny;
+    int xm1 = (x - 1 + Nx) % Nx;
+    AddLink(s, xp1 + y * Nx, wt1);
+    AddLink(s, x + yp1 * Nx, wt2);
+    AddLink(s, xm1 + yp1 * Nx, wt3);
   }
 }
 

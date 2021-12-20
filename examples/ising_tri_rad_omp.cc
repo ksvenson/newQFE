@@ -1,4 +1,4 @@
-// ising_tri_rad.cc
+// ising_tri_rad_omp.cc
 
 #include <getopt.h>
 #include <cassert>
@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <vector>
 #include <Eigen/Dense>
+#include <omp.h>
 #include "ising.h"
 #include "statistics.h"
 
@@ -120,10 +121,10 @@ int main(int argc, char* argv[]) {
 
   // measurements
   std::vector<std::vector<QfeMeasReal>> fourier_2pt(k_max + 1);
-  std::vector<std::vector<double>> fourier_2pt_sum(k_max + 1);
+  // std::vector<std::vector<double>> fourier_2pt_sum(k_max + 1);
   for (int k = 0; k <= k_max; k++) {
     fourier_2pt[k].resize(N_half);
-    fourier_2pt_sum[k].resize(N_half);
+    // fourier_2pt_sum[k].resize(N_half);
   }
   QfeMeasReal spin;  // average spin (magnetization)
   QfeMeasReal mag_2;  // magnetization^2
@@ -149,6 +150,13 @@ int main(int argc, char* argv[]) {
     int n_clusters = field.SWUpdate();
 
     // measure correlators
+    #pragma omp parallel
+    {
+    std::vector<std::vector<double>> fourier_2pt_sum(k_max + 1);
+    for (int k = 0; k <= k_max; k++) {
+      fourier_2pt_sum[k].resize(N_half);
+    }
+
     for (int k = 0; k <= k_max; k++) {
       std::vector<double>::iterator it = fourier_2pt_sum[k].begin();
       std::fill(it, it + N_half, 0.0);
@@ -156,16 +164,13 @@ int main(int argc, char* argv[]) {
 
     for (int c = 0; c < n_clusters; c++) {
       int count = field.sw_clusters[c].size();
+      #pragma omp for collapse(2)
       for (int i1 = 0; i1 < count; i1++) {
-        int s1 = field.sw_clusters[c][i1];
-        int x1 = s1 % Nx;
-        int y1 = s1 / Nx;
+        for (int i2 = 0; i2 < count; i2++) {
 
-        for (int k = 0; k <= k_max; k++) {
-          fourier_2pt_sum[k][0] += 1.0;
-        }
-
-        for (int i2 = i1 + 1; i2 < count; i2++) {
+          int s1 = field.sw_clusters[c][i1];
+          int x1 = s1 % Nx;
+          int y1 = s1 / Nx;
 
           int s2 = field.sw_clusters[c][i2];
           int x2 = s2 % Nx;
@@ -205,11 +210,14 @@ int main(int argc, char* argv[]) {
     }
 
     // add correlator measurements
+    #pragma omp critical
     for (int i = 0; i < N_half; i++) {
       for (int k = 0; k <= k_max; k++) {
         fourier_2pt[k][i].Measure(fourier_2pt_sum[k][i] / vol_sq);
       }
     }
+
+    } // omp parallel
 
     action.Measure(field.Action());
     double m = field.MeanSpin();

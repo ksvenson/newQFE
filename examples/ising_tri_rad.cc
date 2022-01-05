@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <vector>
 #include <Eigen/Dense>
 #include "ising.h"
@@ -32,6 +33,8 @@ int main(int argc, char* argv[]) {
   int n_wolff = 3;
   int n_metropolis = 5;
 
+  std::string data_dir = "ising_tri_rad";
+
   const struct option long_options[] = {
     { "n_x", required_argument, 0, 'X' },
     { "n_y", required_argument, 0, 'Y' },
@@ -45,10 +48,11 @@ int main(int argc, char* argv[]) {
     { "n_skip", required_argument, 0, 's' },
     { "n_wolff", required_argument, 0, 'w' },
     { "n_metropolis", required_argument, 0, 'e' },
+    { "data_dir", required_argument, 0, 'd' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "X:Y:S:a:b:c:k:h:t:s:w:e:";
+  const char* short_options = "X:Y:S:a:b:c:k:h:t:s:w:e:d:";
 
   while (true) {
 
@@ -69,6 +73,7 @@ int main(int argc, char* argv[]) {
       case 's': n_skip = atoi(optarg); break;
       case 'w': n_wolff = atoi(optarg); break;
       case 'e': n_metropolis = atoi(optarg); break;
+      case 'd': data_dir = optarg; break;
       default: break;
     }
   }
@@ -258,8 +263,11 @@ int main(int argc, char* argv[]) {
 
   // open an output file
   char path[50];
-  sprintf(path, "ising_tri_rad/%d_%d_%.3f_%.3f_%.3f_%08X.dat", \
-      Nx, Ny, l1, l2, l3, seed);
+  char run_id[50];
+  sprintf(run_id, "%d_%d_%.3f_%.3f_%.3f", Nx, Ny, l1, l2, l3);
+  sprintf(path, "%s/%s/%s_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
   FILE* file = fopen(path, "w");
   assert(file != nullptr);
 
@@ -271,8 +279,9 @@ int main(int argc, char* argv[]) {
       printf(" %.12e", fourier_2pt[k][i].Error());
       printf(" %.4f", fourier_2pt[k][i].AutocorrFront());
       printf(" %.4f\n", fourier_2pt[k][i].AutocorrBack());
-      fprintf(file, "%d %04d %.12e %.12e\n", k, i, \
-          fourier_2pt[k][i].Mean(), fourier_2pt[k][i].Error());
+      fprintf(file, "%d %04d %.16e %.16e %d %.16e %.16e\n", k, i, \
+          fourier_2pt[k][i].Mean(), fourier_2pt[k][i].Error(), \
+          fourier_2pt[k][i].n, fourier_2pt[k][i].sum, fourier_2pt[k][i].sum2);
     }
   }
 

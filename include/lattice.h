@@ -41,6 +41,7 @@ class QfeLattice {
 public:
   QfeLattice();
   void SeedRng(unsigned int seed);
+  void InitRect(int Nx, int Ny, double wt_x, double wt_y);
   void InitTriangle(int N, double skew = 0.0);
   void InitTriangle(int N, double wt1, double wt2, double wt3);
   void InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3);
@@ -88,6 +89,42 @@ QfeLattice::QfeLattice() {
 
 void QfeLattice::SeedRng(unsigned int seed) {
   rng = QfeRng(seed);
+}
+
+/**
+ * @brief Create a flat, rectangular lattice with periodic boundary conditions
+ *
+ * @param Nx Lattice Size
+ * @param Ny Lattice Size
+ * @param wtx Link weights
+ */
+
+void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
+
+  // create sites
+  ResizeSites(Nx * Ny);
+
+  // set all site weights to 1.0
+  for (int s = 0; s < n_sites; s++) {
+    sites[s].wt = 1.0;
+    sites[s].nn = 0;
+    sites[s].id = 0;
+  }
+
+  // create links
+  links.clear();
+
+  for (int s = 0; s < n_sites; s++) {
+    int x = s % Nx;
+    int y = s / Nx;
+
+    // add links in the "forward" direction (2 links per site)
+    // each link will end up with 4 neighbors
+    int xp1 = (x + 1) % Nx;
+    int yp1 = (y + 1) % Ny;
+    AddLink(s, xp1 + y * Nx, wt1);
+    AddLink(s, x + yp1 * Nx, wt2);
+  }
 }
 
 /**

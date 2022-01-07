@@ -1,4 +1,4 @@
-// ising_tri_rad.cc
+// ising_rect_rad.cc
 
 #include <getopt.h>
 #include <cassert>
@@ -22,10 +22,8 @@ int main(int argc, char* argv[]) {
   // max fourier transform term
   int k_max = 6;
 
-  // triangle side lengths
-  double l1 = 1.0;
-  double l2 = 1.0;
-  double l3 = 1.0;
+  // rectangle side length ratio
+  double l_ratio = 1.0;
 
   int n_therm = 2000;
   int n_traj = 50000;
@@ -33,16 +31,14 @@ int main(int argc, char* argv[]) {
   int n_wolff = 3;
   int n_metropolis = 5;
 
-  std::string data_dir = "ising_tri_rad";
+  std::string data_dir = "ising_rect_rad";
 
   const struct option long_options[] = {
     { "n_x", required_argument, 0, 'X' },
     { "n_y", required_argument, 0, 'Y' },
     { "seed", required_argument, 0, 'S' },
     { "k_max", required_argument, 0, 'k' },
-    { "l1", required_argument, 0, 'a' },
-    { "l2", required_argument, 0, 'b' },
-    { "l3", required_argument, 0, 'c' },
+    { "l_ratio", required_argument, 0, 'l' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
@@ -52,7 +48,7 @@ int main(int argc, char* argv[]) {
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "X:Y:S:a:b:c:k:h:t:s:w:e:d:";
+  const char* short_options = "X:Y:S:l:k:h:t:s:w:e:d:";
 
   while (true) {
 
@@ -65,9 +61,7 @@ int main(int argc, char* argv[]) {
       case 'Y': Ny = atoi(optarg); break;
       case 'S': seed = atol(optarg); break;
       case 'k': k_max = atoi(optarg); break;
-      case 'a': l1 = std::stod(optarg); break;
-      case 'b': l2 = std::stod(optarg); break;
-      case 'c': l3 = std::stod(optarg); break;
+      case 'l': l_ratio = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;
@@ -82,41 +76,23 @@ int main(int argc, char* argv[]) {
   printf("Ny: %d\n", Ny);
   printf("seed: %08X\n", seed);
   printf("k_max: %d\n", k_max);
-  printf("l1: %.12f\n", l1);
-  printf("l2: %.12f\n", l2);
-  printf("l3: %.12f\n", l3);
+  printf("l_ratio: %.12f\n", l_ratio);
 
   double vol = double(Nx * Ny);
   double vol_sq = vol * vol;
   int N_half = Ny / 2 + 1;
 
-  // find the dual lattice lengths
-  double tri_area = 0.25 * sqrt((l1 + l2 + l3) * (l1 + l2 - l3) \
-      * (l1 - l2 + l3) * (-l1 + l2 + l3));
-  double l_sq_sum = l1 * l1 + l2 * l2 + l3 * l3;
-  double ls1 = 0.25 * (l_sq_sum - 2.0 * l1 * l1) / tri_area;
-  double ls2 = 0.25 * (l_sq_sum - 2.0 * l2 * l2) / tri_area;
-  double ls3 = 0.25 * (l_sq_sum - 2.0 * l3 * l3) / tri_area;
-
   // compute the critical couplings
-  double K1 = 0.5 * asinh(ls1);
-  double K2 = 0.5 * asinh(ls2);
-  double K3 = 0.5 * asinh(ls3);
+  double K1 = 0.5 * asinh(1.0 / l_ratio);
+  double K2 = 0.5 * asinh(l_ratio);
 
   printf("K1: %.12f\n", K1);
   printf("K2: %.12f\n", K2);
-  printf("K3: %.12f\n", K3);
-
-  // compute the lattice vectors (needed for fourier transform)
-  double angle12 = acos((l_sq_sum - 2.0 * l3 * l3) / (2.0 * l1 * l2));
-  Eigen::Vector2d v1(l1, 0.0);
-  Eigen::Vector2d v2(l2 * cos(angle12), l2 * sin(angle12));
-  Eigen::Vector2d e1 = v1.normalized();
 
   // initialize the lattice
   QfeLattice lattice;
   lattice.SeedRng(seed);
-  lattice.InitTriangle(Nx, Ny, K1, K2, K3);
+  lattice.InitRect(Nx, Ny, K1, K2);
 
   // initialize the spin field
   QfeIsing field(&lattice, 1.0);
@@ -197,11 +173,8 @@ int main(int argc, char* argv[]) {
           // double count if ady = Ny / 2
           int y_inc = (ady == Ny / 2 || ady == 0) ? 2 : 1;
 
-          // vector from site 1 to site 2
-          Eigen::Vector2d r = dx * v1 + dy * v2;
-
           // do fourier transform
-          double theta = 2.0 * M_PI * r.dot(e1) / (l1 * Nx);
+          double theta = 2.0 * M_PI * dx / Nx;
           for (int k = 0; k <= k_max; k++) {
             fourier_2pt_sum[k][ady] += y_inc * cos(k * theta);
           }
@@ -264,7 +237,7 @@ int main(int argc, char* argv[]) {
   // open an output file
   char path[200];
   char run_id[50];
-  sprintf(run_id, "%d_%d_%.3f_%.3f_%.3f", Nx, Ny, l1, l2, l3);
+  sprintf(run_id, "%d_%d_%.3f", Nx, Ny, l_ratio);
   sprintf(path, "%s/%s/%s_%08X.dat", \
       data_dir.c_str(), run_id, run_id, seed);
   printf("opening file: %s\n", path);
@@ -284,6 +257,7 @@ int main(int argc, char* argv[]) {
           fourier_2pt[k][i].n, fourier_2pt[k][i].sum, fourier_2pt[k][i].sum2);
     }
   }
+  fclose(file);
 
   return 0;
 }

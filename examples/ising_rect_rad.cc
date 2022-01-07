@@ -83,8 +83,8 @@ int main(int argc, char* argv[]) {
   int N_half = Ny / 2 + 1;
 
   // compute the critical couplings
-  double K1 = 0.5 * asinh(1.0 / l_ratio);
-  double K2 = 0.5 * asinh(l_ratio);
+  double K1 = 0.5 * asinh(l_ratio);
+  double K2 = 0.5 * asinh(1.0 / l_ratio);
 
   printf("K1: %.12f\n", K1);
   printf("K2: %.12f\n", K2);

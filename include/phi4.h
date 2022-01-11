@@ -70,7 +70,7 @@ double QfePhi4::Action() {
     action += (mass_term + interaction_term) * lattice->sites[s].wt;
   }
 
-  return action / double(lattice->n_sites);
+  return action / lattice->vol;
 }
 
 double QfePhi4::MeanPhi() {
@@ -78,7 +78,7 @@ double QfePhi4::MeanPhi() {
   for (int s = 0; s < lattice->n_sites; s++) {
     m += phi[s] * lattice->sites[s].wt;
   }
-  return m / double(lattice->n_sites);
+  return m / lattice->vol;
 }
 
 void QfePhi4::HotStart() {

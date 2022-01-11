@@ -159,6 +159,8 @@ QfeLatticeAdS2::QfeLatticeAdS2(int n_layers, int q) {
     }
   }
 
+  vol = double(n_sites);
+
   // identify the number of sites of each type (bulk, boundary)
   n_bulk = layer_offset[n_layers];
   n_boundary = layer_size[n_layers];

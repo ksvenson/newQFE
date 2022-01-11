@@ -52,7 +52,7 @@ double QfeIsing::Action() {
     action -= (beta + beta_ct[l]) * spin[a] * spin[b] * link->wt;
   }
 
-  return action / double(lattice->n_sites);
+  return action / lattice->vol;
 }
 
 double QfeIsing::MeanSpin() {
@@ -60,7 +60,7 @@ double QfeIsing::MeanSpin() {
   for (int s = 0; s < lattice->n_sites; s++) {
     m += spin[s] * lattice->sites[s].wt;
   }
-  return m / double(lattice->n_sites);
+  return m / lattice->vol;
 }
 
 void QfeIsing::HotStart() {

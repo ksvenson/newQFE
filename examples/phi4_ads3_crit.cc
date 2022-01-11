@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
   int n_traj = 20000;
   int n_skip = 20;
   int n_wolff = 4;
-  int n_metropolis = 1;
+  int n_metropolis = 2;
   double metropolis_z = 0.1;
 
   const struct option long_options[] = {
@@ -93,11 +93,21 @@ int main(int argc, char* argv[]) {
     field.is_fixed[s] = true;
   }
 
+  // calculate the lattice volume (include bulk sites only)
+  lattice.vol = 0.0;
+  for (int i = 0; i < lattice.n_bulk; i++) {
+    int s = lattice.bulk_sites[i];
+    lattice.vol += lattice.sites[s].wt;
+  }
+
   // measurements
-  std::vector<double> phi;  // average phi (magnetization)
-  std::vector<double> phi2;  // average phi^2
-  std::vector<double> phi_abs;  // average abs(phi)
-  std::vector<double> action;
+  QfeMeasReal phi;  // average phi (magnetization)
+  QfeMeasReal phi2;  // average phi^2
+  QfeMeasReal phi_abs;  // average abs(phi)
+  QfeMeasReal mag;  // magnetization = abs( sum_i phi_i )
+  QfeMeasReal mag_2;  // magnetization^2
+  QfeMeasReal mag_4;  // magnetization^4
+  QfeMeasReal action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
   QfeMeasReal accept_overrelax;
@@ -132,13 +142,16 @@ int main(int argc, char* argv[]) {
       phi2_sum += p1 * p1 * lattice.sites[s].wt;
       phi_abs_sum += fabs(p1) * lattice.sites[s].wt;
     }
-    phi.push_back(phi_sum / double(lattice.n_bulk));
-    phi2.push_back(phi2_sum / double(lattice.n_bulk));
-    phi_abs.push_back(phi_abs_sum / double(lattice.n_bulk));
+    phi.Measure(phi_sum / lattice.vol);
+    phi2.Measure(phi2_sum / lattice.vol);
+    phi_abs.Measure(phi_abs_sum / lattice.vol);
+    mag.Measure(fabs(phi_sum));
+    mag_2.Measure(phi_sum * phi_sum);
+    mag_4.Measure(mag_2.last * mag_2.last);
 
-    action.push_back(field.Action());
+    action.Measure(field.Action());
     printf("%06d %.12f %.4f %.4f %.12f %.4f\n", \
-        n, action.back(), \
+        n, action.last, \
         accept_metropolis.last, \
         accept_overrelax.last, demon.last, \
         cluster_size.last);
@@ -148,64 +161,71 @@ int main(int argc, char* argv[]) {
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
   printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
   printf("demon: %.12f (%.12f)\n", demon.Mean(), demon.Error());
+  printf("action: %+.12e %.12e %.4f %.4f\n", \
+      action.Mean(), action.Error(), \
+      action.AutocorrFront(), action.AutocorrBack());
 
-  std::vector<double> mag_abs(phi.size());
-  std::vector<double> mag2(phi.size());
-  std::vector<double> mag4(phi.size());
-  for (int i = 0; i < phi.size(); i++) {
-    double m = phi[i];
-    double m2 = m * m;
-    mag_abs[i] = fabs(m);
-    mag2[i] = m2;
-    mag4[i] = m2 * m2;
-  }
+  double phi_abs_mean = phi_abs.Mean();
+  double phi_abs_err = phi_abs.Error();
+  double phi2_mean = phi2.Mean();
+  double phi2_err = phi2.Error();
 
-  printf("phi: %+.12e (%.12e), %.4f\n", \
-      Mean(phi), JackknifeMean(phi), \
-      AutocorrTime(phi));
-  printf("phi^2: %.12e (%.12e), %.4f\n", \
-      Mean(phi2), JackknifeMean(phi2), \
-      AutocorrTime(phi2));
-  printf("phi_abs: %.12e (%.12e), %.4f\n", \
-      Mean(phi_abs), JackknifeMean(phi_abs), \
-      AutocorrTime(phi_abs));
-  printf("phi_susc: %.12e (%.12e)\n", \
-      Susceptibility(phi2, phi_abs), \
-      JackknifeSusceptibility(phi2, phi_abs));
+  printf("phi: %+.12e %.12e %.4f %.4f\n", \
+      phi.Mean(), phi.Error(), \
+      phi.AutocorrFront(), phi.AutocorrBack());
+  printf("phi^2: %+.12e %.12e %.4f %.4f\n", \
+      phi2.Mean(), phi2.Error(), \
+      phi2.AutocorrFront(), phi2.AutocorrBack());
+  printf("phi_abs: %+.12e %.12e %.4f %.4f\n", \
+      phi_abs_mean, phi_abs_err, \
+      phi_abs.AutocorrFront(), phi_abs.AutocorrBack());
 
-  printf("m: %+.12e (%.12e), %.4f\n", \
-      Mean(phi), JackknifeMean(phi), \
-      AutocorrTime(phi));
-  printf("m^2: %.12e (%.12e), %.4f\n", \
-      Mean(mag2), JackknifeMean(mag2), \
-      AutocorrTime(mag2));
-  printf("m^4: %.12e (%.12e), %.4f\n", \
-      Mean(mag4), JackknifeMean(mag4), \
-      AutocorrTime(mag4));
-  printf("U4: %.12e (%.12e)\n", \
-      U4(mag2, mag4), \
-      JackknifeU4(mag2, mag4));
-  printf("m_susc: %.12e (%.12e)\n", \
-      Susceptibility(mag2, mag_abs), \
-      JackknifeSusceptibility(mag2, mag_abs));
+  double phi_susc_mean = phi2_mean - phi_abs_mean * phi_abs_mean;
+  double phi_susc_err = sqrt(pow(phi2_err, 2.0) + pow(2.0 * phi_abs_mean * phi_abs_err, 2.0));
+  printf("phi_susc: %.12e %.12e\n", phi_susc_mean, phi_susc_err);
+
+  double m_mean = mag.Mean();
+  double m_err = mag.Error();
+  double m2_mean = mag_2.Mean();
+  double m2_err = mag_2.Error();
+  double m4_mean = mag_4.Mean();
+  double m4_err = mag_4.Error();
+
+  printf("mag: %+.12e %.12e %.4f %.4f\n", \
+      m_mean, m_err, \
+      mag.AutocorrFront(), mag.AutocorrBack());
+  printf("mag^2: %+.12e %.12e %.4f %.4f\n", \
+      m2_mean, m2_err, \
+      mag_2.AutocorrFront(), mag_2.AutocorrBack());
+  printf("mag^4: %+.12e %.12e %.4f %.4f\n", \
+      m4_mean, m4_err, \
+      mag_4.AutocorrFront(), mag_4.AutocorrBack());
+
+  double u4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
+  double u4_err = 0.5 * u4_mean * sqrt(pow(m4_err / m4_mean, 2.0) \
+      + pow(2.0 * m2_err / m2_mean, 2.0));
+  printf("U4: %.12e %.12e\n", u4_mean, u4_err);
+
+  double m_susc_mean = (m2_mean - m_mean * m_mean) / lattice.vol;
+  double m_susc_err = sqrt(pow(m2_err, 2.0) \
+      + pow(2.0 * m_mean * m_err, 2.0)) / lattice.vol;
+  printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
 
   FILE* file;
 
-  file = fopen("ads3_crit.dat", "a");
+  file = fopen("phi4_ads3_crit.dat", "a");
   fprintf(file, "%d", lattice.n_layers);  // [0]
-  fprintf(file, " %d", lattice.n_bulk);  // [1]
+  fprintf(file, " %.12f", lattice.vol);  // [1]
   fprintf(file, " %.12f", field.msq);  // [2]
   fprintf(file, " %.4f", field.lambda);  // [3]
-  fprintf(file, " %+.12e %.12e", Mean(phi), JackknifeMean(phi));  // [4,5]
-  fprintf(file, " %.12e %.12e", Mean(phi2), JackknifeMean(phi2));  // [6,7]
-  fprintf(file, " %.12e %.12e", Mean(phi_abs), JackknifeMean(phi_abs));  // [8,9]
-  fprintf(file, " %.12e", Susceptibility(phi2, phi_abs));  // [10]
-  fprintf(file, " %.12e", JackknifeSusceptibility(phi2, phi_abs));  // [11]
-  fprintf(file, " %.12e %.12e", Mean(mag2), JackknifeMean(mag2));  // [12,13]
-  fprintf(file, " %.12e %.12e", Mean(mag_abs), JackknifeMean(mag_abs));  // [14,15]
-  fprintf(file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));  // [16,17]
-  fprintf(file, " %.12e", Susceptibility(mag2, mag_abs));  // [18]
-  fprintf(file, " %.12e", JackknifeSusceptibility(mag2, mag_abs));  // [19]
+  fprintf(file, " %+.12e %.12e", phi.Mean(), phi.Error());  // [4,5]
+  fprintf(file, " %.12e %.12e", phi2_mean, phi2_err);  // [6,7]
+  fprintf(file, " %.12e %.12e", phi_abs_mean, phi_abs_err);  // [8,9]
+  fprintf(file, " %.12e %.12e", phi_susc_mean, phi_susc_mean);  // [10,11]
+  fprintf(file, " %.12e %.12e", m2_mean, m2_err);  // [12,13]
+  fprintf(file, " %.12e %.12e", m_mean, m_err);  // [14,15]
+  fprintf(file, " %.12e %.12e", u4_mean, u4_err);  // [16,17]
+  fprintf(file, " %.12e %.12e", m_susc_mean, m_susc_err);  // [18,19]
   fprintf(file, "\n");
   fclose(file);
 

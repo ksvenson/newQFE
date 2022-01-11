@@ -61,6 +61,7 @@ public:
   int n_sites;
   int n_links;
   int n_faces;
+  double vol;
 
   std::vector<QfeSite> sites;
   std::vector<QfeLink> links;
@@ -78,6 +79,7 @@ QfeLattice::QfeLattice() {
   n_sites = 0;
   n_links = 0;
   n_faces = 0;
+  vol = 0.0;
   n_distinct = 0;
 }
 
@@ -103,6 +105,7 @@ void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
 
   // create sites
   ResizeSites(Nx * Ny);
+  vol = double(Nx * Ny);
 
   // set all site weights to 1.0
   for (int s = 0; s < n_sites; s++) {
@@ -178,6 +181,7 @@ void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3
 
   // create sites
   ResizeSites(Nx * Ny);
+  vol = double(Nx * Ny);
 
   // set all site weights to 1.0
   for (int s = 0; s < n_sites; s++) {
@@ -348,6 +352,8 @@ int QfeLattice::AddFace(int a, int b, int c) {
 
 void QfeLattice::Refine2D(int n_refine) {
 
+  if (n_refine < 2) return;
+
   // copy the old links and faces
   std::vector<QfeLink> old_links = links;
   std::vector<QfeFace> old_faces = faces;
@@ -371,6 +377,7 @@ void QfeLattice::Refine2D(int n_refine) {
   n_new_sites += (old_faces.size() * (n_refine - 1) * (n_refine - 2)) / 2;
 
   ResizeSites(n_old_sites + n_new_sites);
+  vol = double(n_sites);
   for (int s = n_old_sites; s < n_sites; s++) {
     sites[s].wt = 1.0;
     sites[s].nn = 0;

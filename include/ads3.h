@@ -46,6 +46,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt, double t_scale) :
   // we start with a single AdS2 slice, and we need to make Nt copies
   int n_sites_slice = n_sites;  // number of sites per time slice
   ResizeSites(n_sites_slice * Nt);
+  vol = 0.0;
 
   // duplicate sites on the other slices
   for (int s0 = 0; s0 < n_sites_slice; s0++) {
@@ -55,6 +56,7 @@ QfeLatticeAdS3::QfeLatticeAdS3(int n_layers, int q, int Nt, double t_scale) :
 
     // adjust the site weight for AdS3
     site0->wt = cosh(rho[s0]) / t_scale;
+    vol += site0->wt * n_layers;
     int layer = site_layers[s0];  // the layer that this site is on
 
     // copy site coordinates and weights for sites on the other time slices

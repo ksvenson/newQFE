@@ -497,9 +497,10 @@ void QfeLatticeS2::UpdateWeights() {
   }
 
   double site_wt_norm = site_wt_sum / double(n_sites);
-
+  double vol = 0.0;
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt /= site_wt_norm;
+    vol += sites[s].wt;
   }
 }
 
@@ -559,6 +560,8 @@ Complex QfeLatticeS2::GetYlm(int s, int l, int m) {
  */
 
 double QfeLatticeS2::CosTheta(int s1, int s2) {
+  if (s1 == s2) return 1.0;
+  if (antipode[s1] == s2) return -1.0;
   return r[s1].dot(r[s2]);
 }
 

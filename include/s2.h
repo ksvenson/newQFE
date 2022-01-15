@@ -25,6 +25,7 @@ public:
   void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   void Inflate();
   void UpdateAntipodes();
+  Eigen::Vector3d FaceCircumcenter(int f);
   double EdgeSquared(int l);
   double EdgeLength(int l);
   double FlatArea(int f);
@@ -405,7 +406,27 @@ void QfeLatticeS2::UpdateAntipodes() {
 }
 
 /**
- * @brief Calculate the squared length of a link
+ * @brief Find the circumcenter of face @p f
+ */
+
+Eigen::Vector3d QfeLatticeS2::FaceCircumcenter(int f) {
+  double sq_edge_1 = EdgeSquared(faces[f].edges[0]);
+  double sq_edge_2 = EdgeSquared(faces[f].edges[1]);
+  double sq_edge_3 = EdgeSquared(faces[f].edges[2]);
+
+  double w1 = sq_edge_1 * (sq_edge_2 + sq_edge_3 - sq_edge_1);
+  double w2 = sq_edge_2 * (sq_edge_3 + sq_edge_1 - sq_edge_2);
+  double w3 = sq_edge_3 * (sq_edge_1 + sq_edge_2 - sq_edge_3);
+
+  Eigen::Vector3d r1 = w1 * r[faces[f].sites[2]];
+  Eigen::Vector3d r2 = w2 * r[faces[f].sites[0]];
+  Eigen::Vector3d r3 = w3 * r[faces[f].sites[1]];
+
+  return (r1 + r2 + r3) / (w1 + w2 + w3);
+}
+
+/**
+ * @brief Calculate the squared length of link @p l
  */
 
 double QfeLatticeS2::EdgeSquared(int l) {
@@ -497,11 +518,10 @@ void QfeLatticeS2::UpdateWeights() {
   }
 
   double site_wt_norm = site_wt_sum / double(n_sites);
-  double vol = 0.0;
   for (int s = 0; s < n_sites; s++) {
     sites[s].wt /= site_wt_norm;
-    vol += sites[s].wt;
   }
+  this->vol = double(n_sites);
 }
 
 /**

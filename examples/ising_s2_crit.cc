@@ -353,8 +353,9 @@ int main(int argc, char* argv[]) {
     for (int s = 0; s < lattice.n_sites; s++) {
       spin_sum += field.spin[s] * lattice.sites[s].wt;
     }
-    double m_sq = spin_sum * spin_sum;
-    spin.Measure(fabs(spin_sum));
+    double m = spin_sum / vol;
+    double m_sq = m * m;
+    spin.Measure(fabs(m));
     mag_2.Measure(m_sq);
     mag_4.Measure(m_sq * m_sq);
     action.Measure(field.Action());
@@ -375,34 +376,48 @@ int main(int argc, char* argv[]) {
   double m4_mean = mag_4.Mean();
   double m4_err = mag_4.Error();
 
+  // open an output file
+  char run_id[50];
+  char path[200];
+  sprintf(run_id, "%d_%d", q, n_refine);
+  FILE* file;
+
+  sprintf(path, "%s/%s/%s_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+
   printf("action: %+.12e %.12e %.4f %.4f\n", \
       action.Mean(), action.Error(), \
       action.AutocorrFront(), action.AutocorrBack());
-  printf("spin: %.12e %.12e %.4f %.4f\n", \
-      m_mean, m_err, \
-      spin.AutocorrFront(), spin.AutocorrBack());
+  fprintf(file, "action %.16e %.16e %d\n", \
+      action.Mean(), action.Error(), \
+      action.n);
+  printf("mag: %.12e %.12e %.4f %.4f\n", \
+      m_mean, m_err, spin.AutocorrFront(), spin.AutocorrBack());
+  fprintf(file, "mag %.16e %.16e %d\n", \
+      m_mean, m_err, spin.n);
   printf("m^2: %.12e %.12e %.4f %.4f\n", \
-      m2_mean, m2_err, \
-      mag_2.AutocorrFront(), mag_2.AutocorrBack());
+      m2_mean, m2_err, mag_2.AutocorrFront(), mag_2.AutocorrBack());
+  fprintf(file, "mag^2 %.16e %.16e %d\n", \
+      m2_mean, m2_err, mag_2.n);
   printf("m^4: %.12e %.12e %.4f %.4f\n", \
       m4_mean, m4_err, \
       mag_4.AutocorrFront(), mag_4.AutocorrBack());
+  fprintf(file, "mag^4 %.16e %.16e %d\n", \
+      m4_mean, m4_err, mag_4.n);
+  fclose(file);
 
   double U4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
   double U4_err = 0.5 * U4_mean * sqrt(pow(m4_err / m4_mean, 2.0) \
       + pow(2.0 * m2_err / m2_mean, 2.0));
   printf("U4: %.12e %.12e\n", U4_mean, U4_err);
 
-  double m_susc_mean = (m2_mean - m_mean * m_mean) / vol;
+  double m_susc_mean = (m2_mean - m_mean * m_mean) * vol;
   double m_susc_err = sqrt(pow(m2_err, 2.0) \
-      + pow(2.0 * m_mean * m_err, 2.0)) / vol;
+      + pow(2.0 * m_mean * m_err, 2.0)) * vol;
   printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
-
-  // open an output file
-  char run_id[50];
-  char path[200];
-  sprintf(run_id, "%d_%d", n_refine, q);
-  FILE* file;
 
   // print 2-point function legendre coefficients
   sprintf(path, "%s/%s/%s_legendre_2pt_%08X.dat", \
@@ -415,9 +430,9 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", legendre_2pt[l].Error());
     printf(" %.4f", legendre_2pt[l].AutocorrFront());
     printf(" %.4f\n", legendre_2pt[l].AutocorrBack());
-    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", l, \
+    fprintf(file, "%04d %.16e %.16e %d\n", l, \
         legendre_2pt[l].Mean(), legendre_2pt[l].Error(), \
-        legendre_2pt[l].n, legendre_2pt[l].sum, legendre_2pt[l].sum2);
+        legendre_2pt[l].n);
   }
   fclose(file);
 
@@ -432,9 +447,9 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", legendre_4pt[l].Error());
     printf(" %.4f", legendre_4pt[l].AutocorrFront());
     printf(" %.4f\n", legendre_4pt[l].AutocorrBack());
-    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", l, \
+    fprintf(file, "%04d %.16e %.16e %d\n", l, \
         legendre_4pt[l].Mean(), legendre_4pt[l].Error(), \
-        legendre_4pt[l].n, legendre_4pt[l].sum, legendre_4pt[l].sum2);
+        legendre_4pt[l].n);
   }
   fclose(file);
 
@@ -449,9 +464,9 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", ylm_2pt[ylm_i].Error());
     printf(" %.4f", ylm_2pt[ylm_i].AutocorrFront());
     printf(" %.4f\n", ylm_2pt[ylm_i].AutocorrBack());
-    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
+    fprintf(file, "%04d %.16e %.16e %d\n", ylm_i, \
         ylm_2pt[ylm_i].Mean(), ylm_2pt[ylm_i].Error(), \
-        ylm_2pt[ylm_i].n, ylm_2pt[ylm_i].sum, ylm_2pt[ylm_i].sum2);
+        ylm_2pt[ylm_i].n);
     m++;
     if (m > l) {
       l++;
@@ -471,9 +486,9 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", ylm_4pt[ylm_i].Error());
     printf(" %.4f", ylm_4pt[ylm_i].AutocorrFront());
     printf(" %.4f\n", ylm_4pt[ylm_i].AutocorrBack());
-    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
+    fprintf(file, "%04d %.16e %.16e %d\n", ylm_i, \
         ylm_4pt[ylm_i].Mean(), ylm_4pt[ylm_i].Error(), \
-        ylm_4pt[ylm_i].n, ylm_4pt[ylm_i].sum, ylm_4pt[ylm_i].sum2);
+        ylm_4pt[ylm_i].n);
     m++;
     if (m > l) {
       l++;

@@ -128,21 +128,23 @@ int main(int argc, char* argv[]) {
     lattice.links[l].wt = 0.5 * asinh(edge_dual);
   }
 
-  // numbering for adjacent sites, links, and faces
-  //
-  //                  s2
-  //                /    \
-  //              /        \
-  //           l1            l2
-  //          /       f0       \
-  //        /                    \
-  //      s0 - - - -  l0  - - - - s1
-  //        \                    /
-  //          \       f1       /
-  //           l3            l4
-  //              \        /
-  //                \    /
-  //                  s3
+/** numbering for adjacent sites, links, and faces
+ *
+ *                       s2
+ *                     /    \
+ *                   /        \
+ *                l1            l2
+ *               /       f0       \
+ *             /                    \
+ *           s0 - - - -  l0  - - - - s1
+ *             \                    /
+ *               \       f1       /
+ *                l3            l4
+ *                   \        /
+ *                     \    /
+ *                       s3
+ *
+ */
 
   for (int l0 = 0; l0 < lattice.n_links; l0++) {
 
@@ -447,7 +449,7 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", ylm_2pt[ylm_i].Error());
     printf(" %.4f", ylm_2pt[ylm_i].AutocorrFront());
     printf(" %.4f\n", ylm_2pt[ylm_i].AutocorrBack());
-    fprintf(file, "2 %04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
+    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
         ylm_2pt[ylm_i].Mean(), ylm_2pt[ylm_i].Error(), \
         ylm_2pt[ylm_i].n, ylm_2pt[ylm_i].sum, ylm_2pt[ylm_i].sum2);
     m++;
@@ -469,7 +471,7 @@ int main(int argc, char* argv[]) {
     printf(" %.12e", ylm_4pt[ylm_i].Error());
     printf(" %.4f", ylm_4pt[ylm_i].AutocorrFront());
     printf(" %.4f\n", ylm_4pt[ylm_i].AutocorrBack());
-    fprintf(file, "3 %04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
+    fprintf(file, "%04d %.16e %.16e %d %.16e %.16e\n", ylm_i, \
         ylm_4pt[ylm_i].Mean(), ylm_4pt[ylm_i].Error(), \
         ylm_4pt[ylm_i].n, ylm_4pt[ylm_i].sum, ylm_4pt[ylm_i].sum2);
     m++;

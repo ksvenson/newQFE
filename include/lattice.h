@@ -316,27 +316,28 @@ int QfeLattice::AddFace(int a, int b, int c) {
   face.n_edges = 3;
   int l;
 
-  // link a to b
   face.sites[0] = a;
+  face.sites[1] = b;
+  face.sites[2] = c;
+
+  // link a to b
   l = FindLink(a, b);
   if (l == -1) l = AddLink(a, b, 1.0);
-  face.edges[0] = l;
+  face.edges[2] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
 
   // link b to c
-  face.sites[1] = b;
   l = FindLink(b, c);
   if (l == -1) l = AddLink(b, c, 1.0);
-  face.edges[1] = l;
+  face.edges[0] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
 
   // link c to a
-  face.sites[2] = c;
   l = FindLink(c, a);
   if (l == -1) l = AddLink(c, a, 1.0);
-  face.edges[2] = l;
+  face.edges[1] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
 

@@ -418,9 +418,9 @@ Eigen::Vector3d QfeLatticeS2::FaceCircumcenter(int f) {
   double w2 = sq_edge_2 * (sq_edge_3 + sq_edge_1 - sq_edge_2);
   double w3 = sq_edge_3 * (sq_edge_1 + sq_edge_2 - sq_edge_3);
 
-  Eigen::Vector3d r1 = w1 * r[faces[f].sites[2]];
-  Eigen::Vector3d r2 = w2 * r[faces[f].sites[0]];
-  Eigen::Vector3d r3 = w3 * r[faces[f].sites[1]];
+  Eigen::Vector3d r1 = w1 * r[faces[f].sites[0]];
+  Eigen::Vector3d r2 = w2 * r[faces[f].sites[1]];
+  Eigen::Vector3d r3 = w3 * r[faces[f].sites[2]];
 
   return (r1 + r2 + r3) / (w1 + w2 + w3);
 }

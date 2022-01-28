@@ -321,10 +321,10 @@ void QfeLatticeS2::LoopRefine(int n_loop) {
       int s6 = old_faces[f].edges[2] + n_old_sites;
 
       // add 4 new faces with new links
-      AddFace(s1, s6, s4);
-      AddFace(s2, s4, s5);
-      AddFace(s3, s5, s6);
-      AddFace(s4, s6, s5);
+      AddFace(s1, s5, s6);
+      AddFace(s2, s4, s6);
+      AddFace(s3, s4, s5);
+      AddFace(s4, s5, s6);
     }
   }
 }

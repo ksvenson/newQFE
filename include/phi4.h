@@ -20,6 +20,8 @@ public:
   double Metropolis();
   double Overrelax();
   int WolffUpdate();
+  int SWUpdate();
+  int FindSWRoot(int s);
   std::vector<double> MInverse(double m0);
 
   QfeLattice* lattice;
@@ -34,6 +36,8 @@ public:
   std::vector<bool> is_clustered;  // keeps track of which sites are clustered
   std::vector<bool> is_fixed;  // dirichlet boundary sites fixed to zero
   std::vector<int> wolff_cluster;  // array of clustered sites
+  std::vector<int> sw_root;  // root for each site
+  std::vector<std::vector<int>> sw_clusters;  // array of sites in each sw cluster
 };
 
 QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
@@ -46,6 +50,7 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
   msq_ct.resize(lattice->sites.size(), 0.0);
   is_fixed.resize(lattice->sites.size(), false);
   is_clustered.resize(lattice->sites.size());
+  sw_root.resize(lattice->sites.size());
 }
 
 double QfePhi4::Action() {
@@ -245,6 +250,78 @@ int QfePhi4::WolffUpdate() {
   }
 
   return wolff_cluster.size();
+}
+
+// swendsen-wang update algorithm
+// ref: R.H. Swendsen and J.S. Wang, Phys. Rev. Lett. 58, 86 (1987)
+
+int QfePhi4::SWUpdate() {
+
+  // each site begins in its own cluster
+  std::iota(std::begin(sw_root), std::end(sw_root), 0);
+
+  // loop over all links
+  for (int l = 0; l < lattice->n_links; l++) {
+    int s1 = lattice->links[l].sites[0];
+    int s2 = lattice->links[l].sites[1];
+
+    // skip if spins don't match
+    if (std::signbit(phi[s1]) != std::signbit(phi[s2])) continue;
+
+    double link_wt = lattice->links[l].wt;
+    double prob = exp(-2.0 * phi[s1] * phi[s2] * link_wt);
+    if (lattice->rng.RandReal() < prob) continue;
+
+    // find the root node for each site
+    int r1 = FindSWRoot(s1);
+    int r2 = FindSWRoot(s2);
+
+    if (r1 == r2) continue;
+    int r = std::min(r1, r2);
+    sw_root[r1] = r;
+    sw_root[r2] = r;
+  }
+
+  std::map<int, int> sw_map;
+  std::vector<bool> is_flipped;
+  sw_clusters.clear();
+  int n_clusters = 0;
+  for (int s = 0; s < lattice->n_sites; s++) {
+    // find the root node for this site
+    int r = FindSWRoot(s);
+
+    if (sw_map.find(r) == sw_map.end()) {
+      sw_map[r] = n_clusters;
+      is_flipped.push_back(lattice->rng.RandReal() > 0.5);
+      sw_clusters.push_back(std::vector<int>());
+      n_clusters++;
+    }
+
+    int c = sw_map[r];
+    sw_clusters[c].push_back(s);
+
+    // flip half the clusters
+    if (is_flipped[c]) phi[s] = -phi[s];
+  }
+
+  return n_clusters;
+}
+
+int QfePhi4::FindSWRoot(int s) {
+
+  int root = sw_root[s];
+
+  // find the root
+  while (root != sw_root[root]) root = sw_root[root];
+
+  // update the trail from s to the root
+  while (s != root) {
+    int old_root = sw_root[s];
+    sw_root[s] = root;
+    s = old_root;
+  }
+
+  return root;
 }
 
 std::vector<double> QfePhi4::MInverse(double m0) {

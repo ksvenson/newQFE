@@ -47,6 +47,7 @@ public:
   void InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3);
   virtual void ResizeSites(int n_sites);
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
+  virtual void AddDimension(int n_slices);
   int FindLink(int a, int b);
   int AddLink(int a, int b, double wt);
   int AddFace(int a, int b, int c);
@@ -229,6 +230,49 @@ void QfeLattice::ResizeSites(int n_sites) {
 
 void QfeLattice::InterpolateSite(int s, int s_a, int s_b, int num, int den) {
   return;
+}
+
+/**
+ * @brief Add an extra dimension with @p n_slices slices perpendicular to
+ * current lattice.
+ */
+
+void QfeLattice::AddDimension(int n_slices) {
+  int n_sites_slice = n_sites;  // number of sites per slice
+
+  // create sites for the new slices in the extra dimension
+  ResizeSites(n_sites_slice * n_slices);
+  vol = 0.0;
+
+  // copy sites from the first slice
+  for (int s0 = 0; s0 < n_sites_slice; s0++) {
+    QfeSite* site0 = &sites[s0];
+    vol += site0->wt * n_slices;
+
+    for (int t = 1; t < n_slices; t++) {
+      int s = t * n_sites_slice + s0;
+      sites[s].nn = 0;  // add links later
+      sites[s].wt = site0->wt;
+      sites[s].id = site0->id;
+    }
+  }
+
+  // duplicate links on the other slices
+  int n_links_slice = links.size();
+  for (int t = 1; t < n_slices; t++) {
+    for (int l = 0; l < n_links_slice; l++) {
+
+      // add links in the other slices
+      int s_a = t * n_sites_slice + links[l].sites[0];
+      int s_b = t * n_sites_slice + links[l].sites[1];
+      AddLink(s_a, s_b, links[l].wt);
+    }
+  }
+
+  // add links to connect the slices with periodic boundary conditions
+  for (int s = 0; s < n_sites; s++) {
+    AddLink(s, (n_sites_slice + s) % n_sites, sites[s].wt);
+  }
 }
 
 /**

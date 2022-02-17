@@ -17,42 +17,40 @@ int main(int argc, char* argv[]) {
   // default parameters
   int n_refine = 8;
   int q = 5;
-  double msq = -21.96;
-  double lambda = 10.0;
-  double ct_mult = 0.0;
+  double msq = -1.82241 * 2;
+  double lambda = 1.0;
   const char* ct_dir = "./ct";
-  double tri2_wt = 0.0;
-  double tri3_wt = 0.0;
-  double tri4_wt = 0.0;
-  double tri5_wt = 0.0;
+  unsigned int seed = 1234u;
+  bool cold_start = false;
+  int l_max = 6;
   int n_therm = 2000;
-  int n_traj = 100000;
-  int n_skip = 20;
-  int n_wolff = 4;
-  int n_metropolis = 1;
+  int n_traj = 20000;
+  int n_skip = 10;
+  int n_wolff = 5;
+  int n_metropolis = 4;
   double metropolis_z = 0.1;
+  std::string data_dir = "phi4_s2_crit";
 
   const struct option long_options[] = {
     { "n_refine", required_argument, 0, 'N' },
     { "q", required_argument, 0, 'q' },
+    { "seed", required_argument, 0, 'S' },
+    { "cold_start", no_argument, 0, 'C' },
     { "msq", required_argument, 0, 'm' },
-    { "lambda", required_argument, 0, 'l' },
-    { "ct_mult", required_argument, 0, 'c' },
-    { "ct_dir", required_argument, 0, 'd' },
-    { "tri2_wt", required_argument, 0, '2' },
-    { "tri3_wt", required_argument, 0, '3' },
-    { "tri4_wt", required_argument, 0, '4' },
-    { "tri5_wt", required_argument, 0, '5' },
+    { "lambda", required_argument, 0, 'L' },
+    { "ct_dir", required_argument, 0, 'c' },
+    { "l_max", required_argument, 0, 'l' },
     { "n_therm", required_argument, 0, 'h' },
     { "n_traj", required_argument, 0, 't' },
     { "n_skip", required_argument, 0, 's' },
     { "n_wolff", required_argument, 0, 'w' },
     { "n_metropolis", required_argument, 0, 'e' },
     { "metropolis_z", required_argument, 0, 'z' },
+    { "data_dir", required_argument, 0, 'd' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:q:m:l:c:d:2:3:4:5:h:t:s:w:e:z:";
+  const char* short_options = "N:q:S:Cm:L:c:l:h:t:s:w:e:z:d:";
 
   while (true) {
 
@@ -63,20 +61,19 @@ int main(int argc, char* argv[]) {
     switch (c) {
       case 'N': n_refine = atoi(optarg); break;
       case 'q': q = atoi(optarg); break;
+      case 'S': seed = atol(optarg); break;
+      case 'C': cold_start = true; break;
       case 'm': msq = std::stod(optarg); break;
-      case 'l': lambda = std::stod(optarg); break;
-      case 'c': ct_mult = std::stod(optarg); break;
-      case 'd': ct_dir = optarg; break;
-      case '2': tri2_wt = std::stod(optarg); break;
-      case '3': tri3_wt = std::stod(optarg); break;
-      case '4': tri4_wt = std::stod(optarg); break;
-      case '5': tri5_wt = std::stod(optarg); break;
+      case 'L': lambda = std::stod(optarg); break;
+      case 'c': ct_dir = optarg; break;
+      case 'l': l_max = atoi(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 's': n_skip = atoi(optarg); break;
       case 'w': n_wolff = atoi(optarg); break;
       case 'e': n_metropolis = atoi(optarg); break;
       case 'z': metropolis_z = std::stod(optarg); break;
+      case 'd': data_dir = optarg; break;
       default: break;
     }
   }
@@ -87,107 +84,72 @@ int main(int argc, char* argv[]) {
   printf("n_wolff: %d\n", n_wolff);
   printf("n_metropolis: %d\n", n_metropolis);
 
+  // number of spherical harmonics to measure
+  int n_ylm = ((l_max + 1) * (l_max + 2)) / 2;
+  printf("l_max: %d\n", l_max);
+  printf("n_ylm: %d\n", n_ylm);
+
   QfeLatticeS2 lattice(q);
+  lattice.SeedRng(seed);
   lattice.Refine2D(n_refine);
-  lattice.UpdateTriangleCoordinates();
   lattice.Inflate();
   lattice.UpdateWeights();
   lattice.UpdateDistinct();
   lattice.UpdateAntipodes();
-  lattice.UpdateYlm(12);
+  lattice.UpdateYlm(l_max);
   printf("n_refine: %d\n", n_refine);
   printf("q: %d\n", q);
   printf("total sites: %d\n", lattice.n_sites);
 
   QfePhi4 field(&lattice, msq, lambda);
-  field.HotStart();
+  if (cold_start) {
+    printf("cold start\n");
+    field.ColdStart();
+  } else {
+    printf("hot start\n");
+    field.HotStart();
+  }
   field.metropolis_z = metropolis_z;
   printf("msq: %.4f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
 
+  double vol = lattice.vol;
+  double vol_sq = vol * vol;
+
   // open the counter term file
-  char path[50];
+  char path[200];
   sprintf(path, "%s/ct_%d_%d.dat", ct_dir, q, n_refine);
   FILE* ct_file = fopen(path, "r");
-  if (ct_file == nullptr) {
-    fprintf(stderr, "unable to open counterterm file: %s\n", path);
-  }
+  assert(ct_file != nullptr);
 
   // read the counter terms
   std::vector<double> ct(lattice.n_distinct);
+  double ct3_dummy;  // not used in 2d
   for (int i = 0; i < lattice.n_distinct; i++) {
-    fscanf(ct_file, "%lf", &ct[i]);
+    fscanf(ct_file, "%lf %lf", &ct[i], &ct3_dummy);
   }
   fclose(ct_file);
 
   // apply the counter terms to each site
-  printf("ct_mult: %.12f\n", ct_mult);
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
-    field.msq_ct[s] += -12.0 * field.lambda * ct[id] * ct_mult;
-  }
-
-  // apply triangular coordinate counterterms
-  printf("tri2_wt: %.12f\n", tri2_wt);
-  printf("tri3_wt: %.12f\n", tri3_wt);
-  printf("tri4_wt: %.12f\n", tri4_wt);
-  printf("tri5_wt: %.12f\n", tri5_wt);
-  double ct_sum = 0.0;
-  for (int s = 0; s < lattice.n_sites; s++) {
-    int id = lattice.sites[s].id;
-    double tri2 = lattice.tri2[id];
-    double tri3 = lattice.tri3[id];
-    field.msq_ct[s] += tri2_wt * tri2;
-    field.msq_ct[s] += tri3_wt * tri3;
-    field.msq_ct[s] += tri4_wt * tri2 * tri2;
-    field.msq_ct[s] += tri5_wt * tri2 * tri3;
-    ct_sum += field.msq_ct[s] * lattice.sites[s].wt;
-  }
-
-  // subtract out the position-independent part of the counterterms
-  double ct_mean = ct_sum / double(lattice.n_sites);
-  for (int s = 0; s < lattice.n_sites; s++) {
-    field.msq_ct[s] -= ct_mean;
-  }
-
-  // get spherical harmonic combinations that mix with the A irrep of I
-  std::vector<double> C6(lattice.n_sites);
-  std::vector<double> C10(lattice.n_sites);
-  std::vector<double> C12(lattice.n_sites);
-  for (int s = 0; s < lattice.n_sites; s++) {
-
-    Complex l6_0 = sqrt(11.0 / 25.0) * lattice.ylm[s][21];
-    Complex l6_5 = 2.0 * sqrt(7.0 / 25.0) * lattice.ylm[s][26];
-    C6[s] = real(l6_0 - l6_5);
-
-    Complex l10_0 = sqrt(247.0 / 1875.0) * lattice.ylm[s][55];
-    Complex l10_5 = 2.0 * sqrt(209.0 / 625.0) * lattice.ylm[s][60];
-    Complex l10_10 = 2.0 * sqrt(187.0 / 1875.0) * lattice.ylm[s][65];
-    C10[s] = real(l10_0 + l10_5 + l10_10);
-
-    Complex l12_0 = sqrt(1071.0 / 3125.0) * lattice.ylm[s][78];
-    Complex l12_5 = 2.0 * sqrt(286.0 / 3125.0) * lattice.ylm[s][83];
-    Complex l12_10 = 2.0 * sqrt(741.0 / 3125.0) * lattice.ylm[s][88];
-    C12[s] = real(l12_0 - l12_5 + l12_10);
+    field.msq_ct[s] += -12.0 * field.lambda * ct[id];
   }
 
   // measurements
-  std::vector<double> phi;  // average phi
-  std::vector<double> phi2;  // average phi^2
-  std::vector<double> anti_phi2;  // average antipodal phi^2
-  std::vector<double> phi_abs;  // average abs(phi)
-  std::vector<double> action;
-  std::vector<QfeMeasReal> distinct_phi2(lattice.n_distinct);
-  std::vector<QfeMeasReal> distinct_anti_phi2(lattice.n_distinct);
-  QfeMeasReal Q6;
-  QfeMeasReal Q10;
-  QfeMeasReal Q12;
+  std::vector<QfeMeasReal> legendre_2pt(l_max + 1);
+  std::vector<QfeMeasReal> legendre_4pt(l_max + 1);
+  std::vector<QfeMeasReal> ylm_2pt(n_ylm);
+  std::vector<QfeMeasReal> ylm_4pt(n_ylm);
+  QfeMeasReal anti_2pt;  // antipodal 2-point function
+  QfeMeasReal mag;  // magnetization
+  QfeMeasReal mag_2;  // magnetization^2
+  QfeMeasReal mag_4;  // magnetization^4
+  QfeMeasReal action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
-  QfeMeasReal accept_overrelax;
-  QfeMeasReal demon;
 
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
@@ -199,174 +161,201 @@ int main(int argc, char* argv[]) {
     for (int j = 0; j < n_metropolis; j++) {
       metropolis_sum += field.Metropolis();
     }
-    cluster_size.Measure(double(cluster_size_sum) / double(lattice.n_sites));
+    cluster_size.Measure(double(cluster_size_sum) / vol);
     accept_metropolis.Measure(metropolis_sum);
-    accept_overrelax.Measure(field.Overrelax());
 
     if (n % n_skip || n < n_therm) continue;
 
-    demon.Measure(field.overrelax_demon);
-
-    // measure field
-    double phi_sum = 0.0;
-    double phi2_sum = 0.0;
-    double anti_phi2_sum = 0.0;
-    double phi_abs_sum = 0.0;
-    double Q6_sum = 0.0;
-    double Q10_sum = 0.0;
-    double Q12_sum = 0.0;
-    std::vector<double> distinct_phi2_sum(lattice.n_distinct, 0.0);
-    std::vector<double> distinct_anti_phi2_sum(lattice.n_distinct, 0.0);
+    // measure correlators
+    std::vector<Complex> ylm_2pt_sum(n_ylm, 0.0);
+    std::vector<Complex> ylm_4pt_sum(n_ylm, 0.0);
+    double mag_sum = 0.0;
+    double anti_2pt_sum = 0.0;
 
     for (int s = 0; s < lattice.n_sites; s++) {
       int a = lattice.antipode[s];
-      double phi_s = field.phi[s];
-      double anti_phi_s = field.phi[a];
-      double wt = lattice.sites[s].wt;
+      double wt_2pt = field.phi[s] * lattice.sites[s].wt;
+      double wt_4pt = wt_2pt * field.phi[a];
 
-      phi_sum += phi_s * wt;
-      phi2_sum += phi_s * phi_s * wt;
-      phi_abs_sum += fabs(phi_s) * wt;
-      anti_phi2_sum += phi_s * anti_phi_s * wt;
-      Q6_sum += C6[s] * phi_s * anti_phi_s * wt;
-      Q10_sum += C10[s] * phi_s * anti_phi_s * wt;
-      Q12_sum += C12[s] * phi_s * anti_phi_s * wt;
+      mag_sum += wt_2pt;
+      anti_2pt_sum += wt_4pt;
 
-      // measure distinct sites
-      int i = lattice.sites[s].id;
-      distinct_phi2_sum[i] += phi_s * phi_s;
-      distinct_anti_phi2_sum[i] += phi_s * anti_phi_s;
-    }
-    phi.push_back(phi_sum / double(lattice.n_sites));
-    phi2.push_back(phi2_sum / double(lattice.n_sites));
-    anti_phi2.push_back(anti_phi2_sum / double(lattice.n_sites));
-    phi_abs.push_back(phi_abs_sum / double(lattice.n_sites));
-    Q6.Measure(Q6_sum / double(lattice.n_sites));
-    Q10.Measure(Q10_sum / double(lattice.n_sites));
-    Q12.Measure(Q12_sum / double(lattice.n_sites));
-
-    for (int i = 0; i < lattice.n_distinct; i++) {
-      double n = double(lattice.distinct_n_sites[i]);
-      distinct_phi2[i].Measure(distinct_phi2_sum[i] / n);
-      distinct_anti_phi2[i].Measure(distinct_anti_phi2_sum[i] / n);
+      for (int ylm_i = 0; ylm_i < n_ylm; ylm_i++) {
+        Complex y = lattice.ylm[s][ylm_i];
+        ylm_2pt_sum[ylm_i] += y * wt_2pt;
+        ylm_4pt_sum[ylm_i] += y * wt_4pt;
+      }
     }
 
-    action.push_back(field.Action());
-    printf("%06d %.12f %.4f %.4f %.12f %.4f\n", \
-        n, action.back(), \
+    double legendre_2pt_sum = 0.0;
+    double legendre_4pt_sum = 0.0;
+    for (int ylm_i = 0, l = 0, m = 0; ylm_i < n_ylm; ylm_i++) {
+      ylm_2pt[ylm_i].Measure(std::norm(ylm_2pt_sum[ylm_i]) / vol_sq);
+      ylm_4pt[ylm_i].Measure(std::norm(ylm_4pt_sum[ylm_i]) / vol_sq);
+
+      legendre_2pt_sum += ylm_2pt[ylm_i].last * (m == 0 ? 1.0 : 2.0);
+      legendre_4pt_sum += ylm_4pt[ylm_i].last * (m == 0 ? 1.0 : 2.0);
+
+      m++;
+      if (m > l) {
+        double coeff = 4.0 * M_PI / double(2 * l + 1);
+        legendre_2pt[l].Measure(legendre_2pt_sum * coeff);
+        legendre_4pt[l].Measure(legendre_4pt_sum * coeff);
+        legendre_2pt_sum = 0.0;
+        legendre_4pt_sum = 0.0;
+        l++;
+        m = 0;
+      }
+    }
+
+    // measure magnetization
+    double m = mag_sum / vol;
+    double m_sq = m * m;
+    mag.Measure(fabs(m));
+    mag_2.Measure(m_sq);
+    mag_4.Measure(m_sq * m_sq);
+    anti_2pt.Measure(anti_2pt_sum / lattice.vol);
+    action.Measure(field.Action());
+    printf("%06d %.12f %.4f %.4f\n", \
+        n, action.last, \
         accept_metropolis.last, \
-        accept_overrelax.last, demon.last, \
         cluster_size.last);
   }
 
   printf("cluster_size/V: %.4f\n", cluster_size.Mean());
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
-  printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
-  printf("demon: %.12f (%.12f)\n", demon.Mean(), demon.Error());
 
-  std::vector<double> mag_abs(phi.size());
-  std::vector<double> mag2(phi.size());
-  std::vector<double> mag4(phi.size());
-  for (int i = 0; i < phi.size(); i++) {
-    double m = phi[i];
-    double m2 = m * m;
-    mag_abs[i] = fabs(m);
-    mag2[i] = m2;
-    mag4[i] = m2 * m2;
+  double m_mean = mag.Mean();
+  double m_err = mag.Error();
+  double m2_mean = mag_2.Mean();
+  double m2_err = mag_2.Error();
+  double m4_mean = mag_4.Mean();
+  double m4_err = mag_4.Error();
+
+  // open an output file
+  char run_id[50];
+  sprintf(run_id, "%d_%d", q, n_refine);
+  FILE* file;
+
+  sprintf(path, "%s/%s/%s_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+
+  printf("action: %+.12e %.12e %.4f %.4f\n", \
+      action.Mean(), action.Error(), \
+      action.AutocorrFront(), action.AutocorrBack());
+  fprintf(file, "action %.16e %.16e %d\n", \
+      action.Mean(), action.Error(), \
+      action.n);
+  printf("mag: %.12e %.12e %.4f %.4f\n", \
+      m_mean, m_err, mag.AutocorrFront(), mag.AutocorrBack());
+  fprintf(file, "mag %.16e %.16e %d\n", \
+      m_mean, m_err, mag.n);
+  printf("m^2: %.12e %.12e %.4f %.4f\n", \
+      m2_mean, m2_err, mag_2.AutocorrFront(), mag_2.AutocorrBack());
+  fprintf(file, "mag^2 %.16e %.16e %d\n", \
+      m2_mean, m2_err, mag_2.n);
+  printf("m^4: %.12e %.12e %.4f %.4f\n", \
+      m4_mean, m4_err, \
+      mag_4.AutocorrFront(), mag_4.AutocorrBack());
+  fprintf(file, "mag^4 %.16e %.16e %d\n", \
+      m4_mean, m4_err, mag_4.n);
+  printf("anti_2pt: %.12e %.12e %.4f %.4f\n", \
+      anti_2pt.Mean(), anti_2pt.Error(), \
+      anti_2pt.AutocorrFront(), anti_2pt.AutocorrBack());
+  fprintf(file, "anti_2pt %.16e %.16e %d\n", \
+      anti_2pt.Mean(), anti_2pt.Error(), anti_2pt.n);
+  fclose(file);
+
+  double U4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
+  double U4_err = 0.5 * U4_mean * sqrt(pow(m4_err / m4_mean, 2.0) \
+      + pow(2.0 * m2_err / m2_mean, 2.0));
+  printf("U4: %.12e %.12e\n", U4_mean, U4_err);
+
+  double m_susc_mean = (m2_mean - m_mean * m_mean) * vol;
+  double m_susc_err = sqrt(pow(m2_err, 2.0) \
+      + pow(2.0 * m_mean * m_err, 2.0)) * vol;
+  printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
+
+  // print 2-point function legendre coefficients
+  sprintf(path, "%s/%s/%s_legendre_2pt_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+  for (int l = 0; l <= l_max; l++) {
+    printf("legendre_2pt_%02d: %.12e", l, legendre_2pt[l].Mean());
+    printf(" %.12e", legendre_2pt[l].Error());
+    printf(" %.4f", legendre_2pt[l].AutocorrFront());
+    printf(" %.4f\n", legendre_2pt[l].AutocorrBack());
+    fprintf(file, "%04d %.16e %.16e %d\n", l, \
+        legendre_2pt[l].Mean(), legendre_2pt[l].Error(), \
+        legendre_2pt[l].n);
   }
+  fclose(file);
 
-  printf("phi: %+.12e (%.12e), %.4f\n", \
-      Mean(phi), JackknifeMean(phi), \
-      AutocorrTime(phi));
-  printf("phi^2: %.12e (%.12e), %.4f\n", \
-      Mean(phi2), JackknifeMean(phi2), \
-      AutocorrTime(phi2));
-  printf("phi_abs: %.12e (%.12e), %.4f\n", \
-      Mean(phi_abs), JackknifeMean(phi_abs), \
-      AutocorrTime(phi_abs));
-  printf("phi_susc: %.12e (%.12e)\n", \
-      Susceptibility(phi2, phi_abs), \
-      JackknifeSusceptibility(phi2, phi_abs));
-
-  printf("m: %+.12e (%.12e), %.4f\n", \
-      Mean(phi), JackknifeMean(phi), \
-      AutocorrTime(phi));
-  printf("m^2: %.12e (%.12e), %.4f\n", \
-      Mean(mag2), JackknifeMean(mag2), \
-      AutocorrTime(mag2));
-  printf("m^4: %.12e (%.12e), %.4f\n", \
-      Mean(mag4), JackknifeMean(mag4), \
-      AutocorrTime(mag4));
-  printf("U4: %.12e (%.12e)\n", \
-      U4(mag2, mag4), \
-      JackknifeU4(mag2, mag4));
-  printf("m_susc: %.12e (%.12e)\n", \
-      Susceptibility(mag2, mag_abs), \
-      JackknifeSusceptibility(mag2, mag_abs));
-
-  printf("Q6: %.12e (%.12e)\n", Q6.Mean(), Q6.Error());
-  printf("Q10: %.12e (%.12e)\n", Q10.Mean(), Q10.Error());
-  printf("Q12: %.12e (%.12e)\n", Q12.Mean(), Q12.Error());
-
-  printf("\n");
-  for (int i = 0; i < lattice.n_distinct; i++) {
-    int s = lattice.distinct_first[i];
-    printf("%04d %3d %.12f %.12e %.12e %.12e %.12e\n", i, \
-        lattice.distinct_n_sites[i], \
-        lattice.sites[s].wt, \
-        distinct_phi2[i].Mean(), \
-        distinct_phi2[i].Error(), \
-        distinct_anti_phi2[i].Mean(), \
-        distinct_anti_phi2[i].Error());
+  // print 4-point function legendre coefficients
+  sprintf(path, "%s/%s/%s_legendre_4pt_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+  for (int l = 0; l <= l_max; l++) {
+    printf("legendre_4pt_%02d: %.12e", l, legendre_4pt[l].Mean());
+    printf(" %.12e", legendre_4pt[l].Error());
+    printf(" %.4f", legendre_4pt[l].AutocorrFront());
+    printf(" %.4f\n", legendre_4pt[l].AutocorrBack());
+    fprintf(file, "%04d %.16e %.16e %d\n", l, \
+        legendre_4pt[l].Mean(), legendre_4pt[l].Error(), \
+        legendre_4pt[l].n);
   }
+  fclose(file);
 
-  FILE* out_file = fopen("phi4_s2_crit.dat", "a");
-  fprintf(out_file, "%d", n_refine);
-  fprintf(out_file, " %d", q);
-  fprintf(out_file, " %d", lattice.n_sites);
-  fprintf(out_file, " %.12f", field.msq);
-  fprintf(out_file, " %.4f", field.lambda);
-  fprintf(out_file, " %.12f", ct_mult);
-  fprintf(out_file, " %+.12e %.12e", Mean(phi), JackknifeMean(phi));
-  fprintf(out_file, " %.12e %.12e", Mean(phi2), JackknifeMean(phi2));
-  fprintf(out_file, " %.12e %.12e", Mean(phi_abs), JackknifeMean(phi_abs));
-  fprintf(out_file, " %.12e %.12e", \
-      Susceptibility(phi2, phi_abs), JackknifeSusceptibility(phi2, phi_abs));
-  fprintf(out_file, " %.12e %.12e", Mean(mag2), JackknifeMean(mag2));
-  fprintf(out_file, " %.12e %.12e", Mean(mag_abs), JackknifeMean(mag_abs));
-  fprintf(out_file, " %.12e %.12e", U4(mag2, mag4), JackknifeU4(mag2, mag4));
-  fprintf(out_file, " %.12e %.12e", \
-      Susceptibility(mag2, mag_abs), JackknifeSusceptibility(mag2, mag_abs));
-  fprintf(out_file, " %.12e %.12e", Q6.Mean(), Q6.Error());
-  fprintf(out_file, " %.12e %.12e", Q10.Mean(), Q10.Error());
-  fprintf(out_file, " %.12e %.12e", Q12.Mean(), Q12.Error());
-  fprintf(out_file, " %.4f", tri2_wt);
-  fprintf(out_file, " %.4f", tri3_wt);
-  fprintf(out_file, " %.4f", tri4_wt);
-  fprintf(out_file, " %.4f", tri5_wt);
-  fprintf(out_file, "\n");
-  fclose(out_file);
-
-  sprintf(path, "distinct_s%d_q%d_%04d_%04d_%04d_%04d.dat", \
-      n_refine, q, \
-      int(round(tri2_wt * 1000)), \
-      int(round(tri3_wt * 1000)), \
-      int(round(tri4_wt * 1000)), \
-      int(round(tri5_wt * 1000)));
-  out_file = fopen(path, "w");
-
-  for (int i = 0; i < lattice.n_distinct; i++) {
-    int s = lattice.distinct_first[i];
-    fprintf(out_file, "%04d", i);
-    fprintf(out_file, " %3d", lattice.distinct_n_sites[i]);
-    fprintf(out_file, " %.12f", lattice.sites[s].wt);
-    fprintf(out_file, " %.12e", distinct_phi2[i].Mean());
-    fprintf(out_file, " %.12e", distinct_phi2[i].Error());
-    fprintf(out_file, " %.12e", distinct_anti_phi2[i].Mean());
-    fprintf(out_file, " %.12e", distinct_anti_phi2[i].Error());
-    fprintf(out_file, "\n");
+  // print 2-point function spherical harmonic coefficients
+  sprintf(path, "%s/%s/%s_ylm_2pt_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+  for (int ylm_i = 0, l = 0, m = 0; ylm_i < n_ylm; ylm_i++) {
+    printf("ylm_2pt_%02d_%02d: %.12e", l, m, ylm_2pt[ylm_i].Mean());
+    printf(" %.12e", ylm_2pt[ylm_i].Error());
+    printf(" %.4f", ylm_2pt[ylm_i].AutocorrFront());
+    printf(" %.4f\n", ylm_2pt[ylm_i].AutocorrBack());
+    fprintf(file, "%04d %.16e %.16e %d\n", ylm_i, \
+        ylm_2pt[ylm_i].Mean(), ylm_2pt[ylm_i].Error(), \
+        ylm_2pt[ylm_i].n);
+    m++;
+    if (m > l) {
+      l++;
+      m = 0;
+    }
   }
-  fclose(out_file);
+  fclose(file);
+
+  // print 2-point function spherical harmonic coefficients
+  sprintf(path, "%s/%s/%s_ylm_4pt_%08X.dat", \
+      data_dir.c_str(), run_id, run_id, seed);
+  printf("opening file: %s\n", path);
+  file = fopen(path, "w");
+  assert(file != nullptr);
+  for (int ylm_i = 0, l = 0, m = 0; ylm_i < n_ylm; ylm_i++) {
+    printf("ylm_4pt_%02d_%02d: %.12e", l, m, ylm_4pt[ylm_i].Mean());
+    printf(" %.12e", ylm_4pt[ylm_i].Error());
+    printf(" %.4f", ylm_4pt[ylm_i].AutocorrFront());
+    printf(" %.4f\n", ylm_4pt[ylm_i].AutocorrBack());
+    fprintf(file, "%04d %.16e %.16e %d\n", ylm_i, \
+        ylm_4pt[ylm_i].Mean(), ylm_4pt[ylm_i].Error(), \
+        ylm_4pt[ylm_i].n);
+    m++;
+    if (m > l) {
+      l++;
+      m = 0;
+    }
+  }
+  fclose(file);
 
   return 0;
 }

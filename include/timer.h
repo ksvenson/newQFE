@@ -12,6 +12,7 @@ public:
 
   std::chrono::high_resolution_clock::time_point start_time;
   std::chrono::high_resolution_clock::time_point stop_time;
+  bool is_stopped;
 };
 
 Timer::Timer() {
@@ -27,6 +28,13 @@ void Timer::Stop() {
 }
 
 double Timer::Duration() {
-  std::chrono::duration<double> dur = stop_time - start_time;
+  std::chrono::duration<double> dur;
+  if (is_stopped) {
+    dur = stop_time - start_time;
+  } else {
+    std::chrono::high_resolution_clock::time_point curr_time;
+    curr_time = std::chrono::high_resolution_clock::now();
+    dur = curr_time - start_time;
+  }
   return dur.count();
 }

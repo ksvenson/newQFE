@@ -14,6 +14,8 @@
 #include "lattice.h"
 
 typedef std::complex<double> Complex;
+typedef Eigen::Matrix<Complex, Eigen::Dynamic, Eigen::Dynamic> ComplexMat;
+typedef Eigen::Matrix<Complex, Eigen::Dynamic, 1> ComplexVec;
 
 class QfeLatticeS2 : public QfeLattice {
 
@@ -30,6 +32,7 @@ public:
   double EdgeLength(int l);
   double FlatArea(int f);
   void UpdateWeights();
+  void OptimizeIntegrator(int l_max);
   void UpdateYlm(int l_max);
   Complex GetYlm(int s, int l, int m);
   double CosTheta(int s1, int s2);
@@ -37,6 +40,7 @@ public:
   void UpdateTriangleCoordinates();
 
   // site coordinates
+  int q;
   std::vector<Eigen::Vector3d> r;
   std::vector<double> tri2;  // s^2 + t^2 + u^2
   std::vector<double> tri3;  // stu
@@ -53,6 +57,7 @@ public:
 QfeLatticeS2::QfeLatticeS2(int q) {
 
   assert(q >= 3 && q <= 5);
+  this->q = q;
 
   if (q == 3) {
 
@@ -522,6 +527,81 @@ void QfeLatticeS2::UpdateWeights() {
     sites[s].wt /= site_wt_norm;
   }
   this->vol = double(n_sites);
+}
+
+/**
+ * @brief Optimize the site weights so that all linear combinations of
+ * spherical harmonics invariant under the relevant symmetry group can be
+ * integrated exactly up to order @p l_max.
+ */
+
+void QfeLatticeS2::OptimizeIntegrator(int l_max) {
+
+  // determine which l,m combinations need to be integrated exactly
+  std::vector<int> l_relevant;
+  std::vector<int> m_relevant;
+  int m_spacing = (q == 5) ? 5 : 4;
+
+  for (int l = 0; l <= l_max; l++) {
+    // odd l only contributes for tetrahedron
+    if ((l % 2) && (q != 3)) continue;
+
+    // number of functions at this l (overcounts for tetrahedron)
+    int n_l = (l / 2) + (l / 3) + (l / q) - l + 1;
+
+    for (int i = 0; i < n_l; i++) {
+      l_relevant.push_back(l);
+      int m = i * m_spacing;
+
+      // odd ell (tetrahedron only)
+      if (l % 2) m = ((2 * i + 1) * m_spacing) / 2;
+
+      m_relevant.push_back(m);
+    }
+  }
+
+  // number of relevant functions
+  int n_relevant = l_relevant.size();
+
+  // generate the rectangular matrix
+  ComplexMat S = ComplexMat::Zero(n_relevant, n_distinct);
+  for (int s = 0; s < n_sites; s++) {
+    int id = sites[s].id;
+    double theta = acos(r[s].z());
+    double phi = atan2(r[s].y(), r[s].x());
+    for (int i = 0; i < n_relevant; i++) {
+      int l = l_relevant[i];
+      int m = m_relevant[i];
+      S(i,id) += boost::math::spherical_harmonic(l, m, theta, phi);
+    }
+  }
+
+  // use the current weights as an initial guess
+  ComplexVec x0(n_distinct);
+  for (int id = 0; id < n_distinct; id++) {
+    int s = distinct_first[id];
+    x0(id) = sites[s].wt;
+  }
+
+  // the right hand side is the spherical harmonic orthogonality condition
+  ComplexVec b = ComplexVec::Zero(n_relevant);
+  b(0) = 0.28209479177387814347 * vol;  // n_sites / sqrt(4 pi)
+
+  // compute the solution
+  Eigen::LeastSquaresConjugateGradient<ComplexMat> cg;
+  cg.compute(S);
+  assert(cg.info() == Eigen::Success);
+  ComplexVec wt = cg.solveWithGuess(b, x0);
+
+  // apply the improved weights to the sites
+  for (int s = 0; s < n_sites; s++) {
+    int id = sites[s].id;
+    if (s == distinct_first[id]) {
+      assert(real(wt(id)) > 0.0);
+      // printf("%04d %.12f %.12f\n", id, sites[s].wt, real(wt(id)));
+    }
+    sites[s].wt = real(wt(id));
+  }
 }
 
 /**

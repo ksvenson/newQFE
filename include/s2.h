@@ -11,6 +11,7 @@
 #include <string>
 #include <boost/math/special_functions/spherical_harmonic.hpp>
 #include <Eigen/Dense>
+#include <Eigen/IterativeLinearSolvers>
 #include "lattice.h"
 
 typedef std::complex<double> Complex;

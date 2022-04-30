@@ -57,6 +57,9 @@ public:
 
 QfeLatticeS2::QfeLatticeS2(int q) {
 
+  // create an empty lattice if q = 0
+  if (q == 0) return;
+
   assert(q >= 3 && q <= 5);
   this->q = q;
 

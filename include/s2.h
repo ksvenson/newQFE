@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <complex>
 #include <vector>
 #include <map>
@@ -23,6 +24,8 @@ class QfeLatticeS2 : public QfeLattice {
 public:
 
   QfeLatticeS2(int q = 5);
+  void WriteSite(FILE* file, int s);
+  void ReadSite(FILE* file, int s);
   void ResizeSites(int n_sites);
   void LoopRefine(int n_loop);
   void InterpolateSite(int s, int s_a, int s_b, int num, int den);
@@ -180,6 +183,24 @@ QfeLatticeS2::QfeLatticeS2(int q) {
     fprintf(stderr, "S2 with q = %d not implemented\n", q);
   }
   n_distinct = 1;
+}
+
+void QfeLatticeS2::WriteSite(FILE* file, int s) {
+  QfeLattice::WriteSite(file, s);
+  double theta = acos(r[s].z());
+  double phi = atan2(r[s].y(), r[s].x());
+  fprintf(file, " %+.20f %+.20f", theta, phi);
+}
+
+void QfeLatticeS2::ReadSite(FILE* file, int s) {
+  QfeLattice::ReadSite(file, s);
+  double theta, phi;
+  fscanf(file, " %lf %lf", &theta, &phi);
+
+  r[s][0] = sin(theta) * cos(phi);
+  r[s][1] = sin(theta) * sin(phi);
+  r[s][2] = cos(theta);
+  r[s].normalize();
 }
 
 /**
@@ -466,8 +487,7 @@ double QfeLatticeS2::FlatArea(int f) {
 }
 
 /**
- * @brief Update site and link weights based on vertex coordinates. Sort
- * all sites into groups with the same weight.
+ * @brief Update site and link weights based on vertex coordinates.
  */
 
 void QfeLatticeS2::UpdateWeights() {
@@ -486,15 +506,7 @@ void QfeLatticeS2::UpdateWeights() {
       // find the other two edges of this face
       int f = links[l].faces[i];
       int e = 0;
-      if (faces[f].edges[0] == l) {
-        e = 0;
-      } else if (faces[f].edges[1] == l) {
-        e = 1;
-      } else if (faces[f].edges[2] == l) {
-        e = 2;
-      } else {
-        printf("invalid face %04d for link %04d\n", f, l);
-      }
+      while (faces[f].edges[e] != l) e++;
       int e1 = (e + 1) % 3;
       int e2 = (e + 2) % 3;
       int l1 = faces[f].edges[e1];

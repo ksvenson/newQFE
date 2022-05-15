@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <algorithm>
 #include <map>
 #include <random>
@@ -40,6 +41,14 @@ class QfeLattice {
 
 public:
   QfeLattice();
+  virtual void WriteLattice(FILE* file);
+  virtual void WriteSite(FILE* file, int s);
+  virtual void WriteLink(FILE* file, int l);
+  virtual void WriteFace(FILE* file, int f);
+  virtual void ReadLattice(FILE* file);
+  virtual void ReadSite(FILE* file, int s);
+  virtual void ReadLink(FILE* file, int l);
+  virtual void ReadFace(FILE* file, int f);
   void SeedRng(unsigned int seed);
   void InitRect(int Nx, int Ny, double wt_x, double wt_y);
   void InitTriangle(int N, double skew = 0.0);
@@ -82,6 +91,149 @@ QfeLattice::QfeLattice() {
   n_faces = 0;
   vol = 0.0;
   n_distinct = 0;
+}
+
+void QfeLattice::WriteLattice(FILE* file) {
+  fprintf(file, "begin_sites\n");
+  fprintf(file, "n_sites %d\n", n_sites);
+  for (int s = 0; s < n_sites; s++) {
+    WriteSite(file, s);
+    fprintf(file, "\n");
+  }
+  fprintf(file, "end_sites\n");
+
+  fprintf(file, "begin_links\n");
+  fprintf(file, "n_links %d\n", n_links);
+  for (int l = 0; l < n_links; l++) {
+    WriteLink(file, l);
+    fprintf(file, "\n");
+  }
+  fprintf(file, "end_links\n");
+
+  fprintf(file, "begin_faces\n");
+  fprintf(file, "n_faces %d\n", n_faces);
+  for (int f = 0; f < n_faces; f++) {
+    WriteFace(file, f);
+    fprintf(file, "\n");
+  }
+  fprintf(file, "end_faces\n");
+}
+
+void QfeLattice::ReadLattice(FILE* file) {
+
+  sites.clear(); n_sites = 0;
+  links.clear(); n_links = 0;
+  faces.clear(); n_faces = 0;
+  vol = 0.0;
+
+  char buffer[200];
+  int n;
+
+  while (!feof(file)) {
+    fscanf(file, "%s\n", buffer);
+
+    if (strcmp(buffer, "begin_sites") == 0) {
+      // read sites
+      fscanf(file, "%s %d\n", buffer, &n);
+      if (strcmp(buffer, "n_sites")) {
+        printf("invalid value \"%s\", expected n_sites\n", buffer);
+        return;
+      }
+
+      ResizeSites(n);
+      vol = 0;
+      for (int s = 0; s < n_sites; s++) {
+        ReadSite(file, s);
+        vol += sites[s].wt;
+        getc(file);  // read newline character
+      }
+
+      fscanf(file, "%s\n", buffer);
+      if (strcmp(buffer, "end_sites")) {
+        printf("invalid value \"%s\", expected end_sites\n", buffer);
+        return;
+      }
+    } else if (strcmp(buffer, "begin_links") == 0) {
+      // read links
+      fscanf(file, "%s %d\n", buffer, &n);
+      if (strcmp(buffer, "n_links")) {
+        printf("invalid value \"%s\", expected n_links\n", buffer);
+        return;
+      }
+
+      for (int l = 0; l < n; l++) {
+        ReadLink(file, l);
+        getc(file);  // read newline character
+      }
+
+      fscanf(file, "%s\n", buffer);
+      if (strcmp(buffer, "end_links")) {
+        printf("invalid value \"%s\", expected end_links\n", buffer);
+        return;
+      }
+    } else if (strcmp(buffer, "begin_faces") == 0) {
+      // read faces
+      fscanf(file, "%s %d\n", buffer, &n);
+      if (strcmp(buffer, "n_faces")) {
+        printf("invalid value \"%s\", expected n_faces\n", buffer);
+        return;
+      }
+
+      for (int f = 0; f < n; f++) {
+        ReadFace(file, f);
+        getc(file);  // read newline character
+      }
+
+      fscanf(file, "%s\n", buffer);
+      if (strcmp(buffer, "end_faces")) {
+        printf("invalid value \"%s\", expected end_faces\n", buffer);
+        return;
+      }
+    }
+  }
+
+  UpdateDistinct();
+}
+
+void QfeLattice::WriteSite(FILE* file, int s) {
+  fprintf(file, "%04d %.20f %04d", s, sites[s].wt, sites[s].id);
+}
+
+void QfeLattice::ReadSite(FILE* file, int s) {
+  int s_chk;
+  fscanf(file, "%d %lf %d", &s_chk, &sites[s].wt, &sites[s].id);
+  if (s != s_chk) {
+    printf("non-matching site index: %04d %04d\n", s, s_chk);
+  }
+}
+
+void QfeLattice::WriteLink(FILE* file, int l) {
+  fprintf(file, "%04d %.20f %04d %04d", l, links[l].wt, links[l].sites[0], links[l].sites[1]);
+}
+
+void QfeLattice::ReadLink(FILE* file, int l) {
+  int l_chk;
+  double wt;
+  int s_a, s_b;
+  fscanf(file, "%d %lf %d %d", &l_chk, &wt, &s_a, &s_b);
+  if (l != l_chk) {
+    printf("non-matching link index: %04d %04d\n", l, l_chk);
+  }
+  AddLink(s_a, s_b, wt);
+}
+
+void QfeLattice::WriteFace(FILE* file, int f) {
+  fprintf(file, "%04d %04d %04d %04d", f, faces[f].sites[0], faces[f].sites[1], faces[f].sites[2]);
+}
+
+void QfeLattice::ReadFace(FILE* file, int f) {
+  int f_chk;
+  int s_a, s_b, s_c;
+  fscanf(file, "%d %d %d %d", &f_chk, &s_a, &s_b, &s_c);
+  if (f != f_chk) {
+    printf("non-matching face index: %04d %04d\n", f, f_chk);
+  }
+  AddFace(s_a, s_b, s_c);
 }
 
 /**

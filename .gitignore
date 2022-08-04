@@ -13,3 +13,6 @@ bin/*
 
 # bash script files
 *.sh
+
+# jupyter notebooks
+jupyter/*

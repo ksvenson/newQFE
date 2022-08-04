@@ -11,9 +11,12 @@
 #include <vector>
 #include "rng.h"
 
-#define MAX_SITE_NEIGHBORS 12
-#define MAX_LINK_FACES 3
+#define MAX_SITE_NEIGHBORS 40
+#define MAX_LINK_FACES 12
 #define MAX_FACE_EDGES 4
+#define MAX_FACE_CELLS 2
+#define MAX_CELL_FACES 4
+#define MAX_CELL_SITES 4
 
 struct QfeSite {
   double wt;  // site weight
@@ -33,8 +36,18 @@ struct QfeLink {
 struct QfeFace {
   double wt;  // face weight
   int n_edges;  // number of links (3 for triangle)
+  int n_cells;  // number of cells that include this face
+  int cells[MAX_FACE_CELLS];  // cells around this face
   int edges[MAX_FACE_EDGES];  // links around this face
   int sites[MAX_FACE_EDGES];  // sites around this face
+  bool flip_edge[MAX_FACE_EDGES];  // edges which are flipped wrt this face
+};
+
+struct QfeCell {
+  double wt;
+  int n_faces;
+  int faces[MAX_CELL_FACES];
+  int sites[MAX_CELL_SITES];
 };
 
 class QfeLattice {
@@ -45,10 +58,12 @@ public:
   virtual void WriteSite(FILE* file, int s);
   virtual void WriteLink(FILE* file, int l);
   virtual void WriteFace(FILE* file, int f);
+  virtual void WriteCell(FILE* file, int c);
   virtual void ReadLattice(FILE* file);
   virtual void ReadSite(FILE* file, int s);
   virtual void ReadLink(FILE* file, int l);
   virtual void ReadFace(FILE* file, int f);
+  virtual void ReadCell(FILE* file, int c);
   void SeedRng(unsigned int seed);
   void InitRect(int Nx, int Ny, double wt_x, double wt_y);
   void InitTriangle(int N, double skew = 0.0);
@@ -58,29 +73,38 @@ public:
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   virtual void AddDimension(int n_slices);
   int FindLink(int a, int b);
+  int FindFace(int a, int b, int c);
   int AddLink(int a, int b, double wt);
-  int AddFace(int a, int b, int c);
+  int AddFace(int a, int b, int c, double wt = 1.0);
+  int AddFace(int a, int b, int c, int d, double wt = 1.0);
+  int AddCell(int a, int b, int c, int d, double wt = 1.0);
   void UpdateDistinct();
   void Refine2D(int n_refine);
   void PrintSites();
   void PrintLinks();
   void PrintFaces();
+  void PrintCells();
   void CheckConnectivity();
   void CheckConsistency();
 
   int n_sites;
   int n_links;
   int n_faces;
+  int n_cells;
   double vol;
 
   std::vector<QfeSite> sites;
   std::vector<QfeLink> links;
   std::vector<QfeFace> faces;
+  std::vector<QfeCell> cells;
 
   // symmetrically distinct sites
   std::vector<int> distinct_n_sites;  // number of sites for each distinct id
   std::vector<int> distinct_first;  // representative site for distinct group
   int n_distinct;
+
+  std::map<std::string, int> link_map;
+  std::map<std::string, int> face_map;
 
   QfeRng rng;
 };
@@ -89,6 +113,7 @@ QfeLattice::QfeLattice() {
   n_sites = 0;
   n_links = 0;
   n_faces = 0;
+  n_cells = 0;
   vol = 0.0;
   n_distinct = 0;
 }
@@ -117,6 +142,14 @@ void QfeLattice::WriteLattice(FILE* file) {
     fprintf(file, "\n");
   }
   fprintf(file, "end_faces\n");
+
+  fprintf(file, "begin_cells\n");
+  fprintf(file, "n_cells %d\n", n_cells);
+  for (int c = 0; c < n_cells; c++) {
+    WriteCell(file, c);
+    fprintf(file, "\n");
+  }
+  fprintf(file, "end_cells\n");
 }
 
 void QfeLattice::ReadLattice(FILE* file) {
@@ -189,6 +222,24 @@ void QfeLattice::ReadLattice(FILE* file) {
         printf("invalid value \"%s\", expected end_faces\n", buffer);
         return;
       }
+    } else if (strcmp(buffer, "begin_cells") == 0) {
+      // read cells
+      fscanf(file, "%s %d\n", buffer, &n);
+      if (strcmp(buffer, "n_cells")) {
+        printf("invalid value \"%s\", expected n_cells\n", buffer);
+        return;
+      }
+
+      for (int c = 0; c < n; c++) {
+        ReadCell(file, c);
+        getc(file);  // read newline character
+      }
+
+      fscanf(file, "%s\n", buffer);
+      if (strcmp(buffer, "end_cells")) {
+        printf("invalid value \"%s\", expected end_cells\n", buffer);
+        return;
+      }
     }
   }
 
@@ -208,7 +259,8 @@ void QfeLattice::ReadSite(FILE* file, int s) {
 }
 
 void QfeLattice::WriteLink(FILE* file, int l) {
-  fprintf(file, "%04d %.20f %04d %04d", l, links[l].wt, links[l].sites[0], links[l].sites[1]);
+  fprintf(file, "%04d %.20f %04d %04d", l, links[l].wt, \
+      links[l].sites[0], links[l].sites[1]);
 }
 
 void QfeLattice::ReadLink(FILE* file, int l) {
@@ -223,17 +275,35 @@ void QfeLattice::ReadLink(FILE* file, int l) {
 }
 
 void QfeLattice::WriteFace(FILE* file, int f) {
-  fprintf(file, "%04d %04d %04d %04d", f, faces[f].sites[0], faces[f].sites[1], faces[f].sites[2]);
+  fprintf(file, "%04d %.20f %04d %04d %04d", f, faces[f].wt, \
+    faces[f].sites[0], faces[f].sites[1], faces[f].sites[2]);
 }
 
 void QfeLattice::ReadFace(FILE* file, int f) {
   int f_chk;
+  double wt;
   int s_a, s_b, s_c;
-  fscanf(file, "%d %d %d %d", &f_chk, &s_a, &s_b, &s_c);
+  fscanf(file, "%d %lf %d %d %d", &f_chk, &wt, &s_a, &s_b, &s_c);
   if (f != f_chk) {
     printf("non-matching face index: %04d %04d\n", f, f_chk);
   }
   AddFace(s_a, s_b, s_c);
+}
+
+void QfeLattice::WriteCell(FILE* file, int c) {
+  fprintf(file, "%04d %.20f %04d %04d %04d %04d", c, cells[c].wt, \
+    cells[c].sites[0], cells[c].sites[1], cells[c].sites[2], cells[c].sites[3]);
+}
+
+void QfeLattice::ReadCell(FILE* file, int c) {
+  int c_chk;
+  double wt;
+  int s_a, s_b, s_c, s_d;
+  fscanf(file, "%d %lf %d %d %d %d", &c_chk, &wt, &s_a, &s_b, &s_c, &s_d);
+  if (c != c_chk) {
+    printf("non-matching cell index: %04d %04d\n", c, c_chk);
+  }
+  AddCell(s_a, s_b, s_c, s_d);
 }
 
 /**
@@ -278,8 +348,11 @@ void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
     // each link will end up with 4 neighbors
     int xp1 = (x + 1) % Nx;
     int yp1 = (y + 1) % Ny;
-    AddLink(s, xp1 + y * Nx, wt1);
-    AddLink(s, x + yp1 * Nx, wt2);
+    int f = AddFace(s, xp1 + y * Nx, xp1 + yp1 * Nx, x + yp1 * Nx, 1.0);
+    links[faces[f].edges[0]].wt = wt1;
+    links[faces[f].edges[1]].wt = wt2;
+    links[faces[f].edges[2]].wt = wt1;
+    links[faces[f].edges[3]].wt = wt2;
   }
 }
 
@@ -355,9 +428,10 @@ void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3
     int xp1 = (x + 1) % Nx;
     int yp1 = (y + 1) % Ny;
     int xm1 = (x - 1 + Nx) % Nx;
-    AddLink(s, xp1 + y * Nx, wt1);
-    AddLink(s, x + yp1 * Nx, wt2);
-    AddLink(s, xm1 + yp1 * Nx, wt3);
+
+    // add "right-handed" faces
+    AddFace(s, xp1 + y * Nx, x + yp1 * Nx);
+    AddFace(s, x + yp1 * Nx, xm1 + yp1 * Nx);
   }
 }
 
@@ -433,10 +507,33 @@ void QfeLattice::AddDimension(int n_slices) {
  */
 
 int QfeLattice::FindLink(int a, int b) {
-  for (int n = 0; n < sites[a].nn; n++) {
-    if (sites[a].neighbors[n] == b) return sites[a].links[n];
+  // sort a,b to make comparison easier
+  std::vector<int> find_sites = {a, b};
+  std::sort(find_sites.begin(), find_sites.end());
+  char link_name[50];
+  sprintf(link_name, "%d_%d", find_sites[0], find_sites[1]);
+  if (link_map.find(link_name) == link_map.end()) {
+    return -1;
   }
-  return -1;
+  return link_map[link_name];
+}
+
+/**
+ * @brief Finds the face connecting sites @p a, @p b, and @p c and returns
+ * the face index. Returns -1 if no face exists.
+ */
+
+int QfeLattice::FindFace(int a, int b, int c) {
+  // sort a,b,c to make comparison easier
+  std::vector<int> find_sites = {a, b, c};
+  std::sort(find_sites.begin(), find_sites.end());
+  char face_name[50];
+  sprintf(face_name, "%d_%d_%d", find_sites[0], find_sites[1], find_sites[2]);
+
+  if (face_map.find(face_name) == face_map.end()) {
+    return -1;
+  }
+  return face_map[face_name];
 }
 
 /**
@@ -447,6 +544,14 @@ int QfeLattice::FindLink(int a, int b) {
 int QfeLattice::AddLink(int a, int b, double wt) {
 
   int l = links.size();  // link index
+
+  std::vector<int> sorted_sites = {a, b};
+  std::sort(sorted_sites.begin(), sorted_sites.end());
+  char link_name[50];
+  sprintf(link_name, "%d_%d", sorted_sites[0], sorted_sites[1]);
+  assert(link_map.find(link_name) == link_map.end());
+  link_map[link_name] = l;
+
   QfeLink link;
   link.wt = wt;
   link.sites[0] = a;
@@ -505,11 +610,20 @@ void QfeLattice::UpdateDistinct() {
  * Returns the face index.
  */
 
-int QfeLattice::AddFace(int a, int b, int c) {
+int QfeLattice::AddFace(int a, int b, int c, double wt) {
   int f = faces.size();  // face index
+
+  std::vector<int> sorted_sites = {a, b, c};
+  std::sort(sorted_sites.begin(), sorted_sites.end());
+  char face_name[50];
+  sprintf(face_name, "%d_%d_%d", sorted_sites[0], sorted_sites[1], sorted_sites[2]);
+  assert(face_map.find(face_name) == face_map.end());
+  face_map[face_name] = f;
+
   QfeFace face;
-  face.wt = 1.0;
+  face.wt = wt;
   face.n_edges = 3;
+  face.n_cells = 0;
   int l;
 
   face.sites[0] = a;
@@ -518,21 +632,36 @@ int QfeLattice::AddFace(int a, int b, int c) {
 
   // link a to b
   l = FindLink(a, b);
-  if (l == -1) l = AddLink(a, b, 1.0);
+  face.flip_edge[2] = false;
+  if (l == -1) {
+    l = AddLink(a, b, 1.0);
+  } else if (links[l].sites[0] == b) {
+    face.flip_edge[2] = true;
+  }
   face.edges[2] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
 
   // link b to c
   l = FindLink(b, c);
-  if (l == -1) l = AddLink(b, c, 1.0);
+  face.flip_edge[0] = false;
+  if (l == -1) {
+    l = AddLink(b, c, 1.0);
+  } else if (links[l].sites[0] == c) {
+    face.flip_edge[0] = true;
+  }
   face.edges[0] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
 
   // link c to a
   l = FindLink(c, a);
-  if (l == -1) l = AddLink(c, a, 1.0);
+  face.flip_edge[1] = false;
+  if (l == -1) {
+    l = AddLink(c, a, 1.0);
+  } else if (links[l].sites[1] == a) {
+    face.flip_edge[1] = true;
+  }
   face.edges[1] = l;
   links[l].faces[links[l].n_faces] = f;
   links[l].n_faces++;
@@ -540,6 +669,137 @@ int QfeLattice::AddFace(int a, int b, int c) {
   faces.push_back(face);
   n_faces = faces.size();
   return f;
+}
+
+/**
+ * @brief Add a rectangular face with corner sites @p a, @p b, @p c, and @p d.
+ * Returns the face index.
+ */
+
+int QfeLattice::AddFace(int a, int b, int c, int d, double wt) {
+  int f = faces.size();  // face index
+  QfeFace face;
+  face.wt = wt;
+  face.n_edges = 4;
+  face.n_cells = 0;
+  int l;
+
+  face.sites[0] = a;
+  face.sites[1] = b;
+  face.sites[2] = c;
+  face.sites[3] = d;
+
+  // link a to b
+  l = FindLink(a, b);
+  face.flip_edge[3] = false;
+  if (l == -1) {
+    l = AddLink(a, b, 1.0);
+  } else if (links[l].sites[1] == b) {
+    face.flip_edge[3] = true;
+  }
+  face.edges[3] = l;
+  links[l].faces[links[l].n_faces] = f;
+  links[l].n_faces++;
+
+  // link b to c
+  l = FindLink(b, c);
+  face.flip_edge[0] = false;
+  if (l == -1) {
+    l = AddLink(b, c, 1.0);
+  } else if (links[l].sites[1] == c) {
+    face.flip_edge[0] = true;
+  }
+  face.edges[0] = l;
+  links[l].faces[links[l].n_faces] = f;
+  links[l].n_faces++;
+
+  // link c to d
+  l = FindLink(c, d);
+  face.flip_edge[1] = false;
+  if (l == -1) {
+    l = AddLink(c, a, 1.0);
+  } else if (links[l].sites[1] == d) {
+    face.flip_edge[1] = true;
+  }
+  face.edges[1] = l;
+  links[l].faces[links[l].n_faces] = f;
+  links[l].n_faces++;
+
+  // link d to a
+  l = FindLink(d, a);
+  face.flip_edge[2] = false;
+  if (l == -1) {
+    l = AddLink(d, a, 1.0);
+  } else if (links[l].sites[1] == a) {
+    face.flip_edge[2] = true;
+  }
+  face.edges[2] = l;
+  links[l].faces[links[l].n_faces] = f;
+  links[l].n_faces++;
+
+  faces.push_back(face);
+  n_faces = faces.size();
+  return f;
+}
+
+/**
+ * @brief Add a tetrahedal cell with corner sites @p a, @p b, @p c, and @p d.
+ * Returns the cell index.
+ */
+
+int QfeLattice::AddCell(int a, int b, int c, int d, double wt) {
+  int cell_id = cells.size();  // cell index
+  QfeCell cell;
+  cell.wt = wt;
+  cell.n_faces = 4;
+
+  // site is opposite face with same index
+  cell.sites[0] = a;
+  cell.sites[1] = b;
+  cell.sites[2] = c;
+  cell.sites[3] = d;
+
+  int f;
+
+  // create face bcd
+  f = FindFace(b, c, d);
+  if (f == -1) {
+    f = AddFace(b, c, d, 1.0);
+  }
+  cell.faces[0] = f;
+  faces[f].cells[faces[f].n_cells] = cell_id;
+  faces[f].n_cells++;
+
+  // create face acd
+  f = FindFace(a, c, d);
+  if (f == -1) {
+    f = AddFace(a, c, d, 1.0);
+  }
+  cell.faces[1] = f;
+  faces[f].cells[faces[f].n_cells] = cell_id;
+  faces[f].n_cells++;
+
+  // create face abd
+  f = FindFace(a, b, d);
+  if (f == -1) {
+    f = AddFace(a, b, d, 1.0);
+  }
+  cell.faces[2] = f;
+  faces[f].cells[faces[f].n_cells] = cell_id;
+  faces[f].n_cells++;
+
+  // create face abc
+  f = FindFace(a, b, c);
+  if (f == -1) {
+    f = AddFace(a, b, c, 1.0);
+  }
+  cell.faces[3] = f;
+  faces[f].cells[faces[f].n_cells] = cell_id;
+  faces[f].n_cells++;
+
+  cells.push_back(cell);
+  n_cells = cells.size();
+  return n_cells;
 }
 
 /**
@@ -752,6 +1012,19 @@ void QfeLattice::PrintFaces() {
     printf(" %.12f", faces[f].wt);
     for (int n = 0; n < faces[f].n_edges; n++) {
       printf(" %04d", faces[f].edges[n]);
+    }
+    printf("\n");
+  }
+  printf("*************\n");
+}
+
+void QfeLattice::PrintCells() {
+  printf("\n*** cells ***\n");
+  for (int c = 0; c < cells.size(); c++) {
+    printf("%04d", c);
+    printf(" %.12f", cells[c].wt);
+    for (int n = 0; n < cells[c].n_faces; n++) {
+      printf(" %04d", cells[c].faces[n]);
     }
     printf("\n");
   }

@@ -292,6 +292,7 @@ int main(int argc, char* argv[]) {
 
   // project all sites onto a unit sphere
   lattice.Inflate();
+  lattice.CalcFEMWeights();
 
   // save the site positions and the graph to a file
   char grid_path[200];

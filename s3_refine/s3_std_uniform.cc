@@ -246,7 +246,7 @@ double DualVolumeError(QfeLatticeS3& lattice) {
 }
 
 double CombinedError(QfeLatticeS3& lattice) {
-  return DualVolumeError(lattice);
+  return CellVolumeError(lattice);
   // return CellVolumeError(lattice) + DualVolumeError(lattice);
   // return CellVolumeError(lattice) + CircumradiusError(lattice); // + DualVolumeError(lattice);
 }
@@ -613,6 +613,7 @@ int main(int argc, const char* argv[]) {
   }
 
   PrintError(lattice);
+  lattice.CalcFEMWeights();
 
   char lattice_path[200];
   sprintf(lattice_path, "%s_uniform.dat", base_path);

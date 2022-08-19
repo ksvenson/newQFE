@@ -16,16 +16,13 @@ int main(int argc, char* argv[]) {
 
   Timer solve_timer;
 
-  char base_path[200];
-  sprintf(base_path, "%s", "s3_riesz/q5v1");
-  if (argc > 1) {
-    sprintf(base_path, "%s", argv[1]);
-  }
+  assert(argc > 1);
+  char* base_path = argv[1];
 
   // read site coordinates
   QfeLatticeS3 lattice(0);
   char lattice_path[200];
-  sprintf(lattice_path, "%s_lattice.dat", base_path);
+  sprintf(lattice_path, "%s.dat", base_path);
   FILE* lattice_file = fopen(lattice_path, "r");
   assert(lattice_file != nullptr);
   lattice.ReadLattice(lattice_file);

@@ -11,17 +11,14 @@ typedef Eigen::Vector4<double> Vec4;
 
 int main(int argc, char* argv[]) {
 
-  char base_path[200];
-  sprintf(base_path, "%s", "s3_riesz/q5v1");
-  if (argc > 1) {
-    sprintf(base_path, "%s", argv[1]);
-  }
+  assert(argc > 1);
+  char* base_path = argv[1];
 
   QfeLatticeS3 lattice(0);
 
   // read lattice
   char lattice_path[200];
-  sprintf(lattice_path, "%s_uniform.dat", base_path);
+  sprintf(lattice_path, "%s.dat", base_path);
   FILE* lattice_file = fopen(lattice_path, "r");
   assert(lattice_file != nullptr);
   lattice.ReadLattice(lattice_file);
@@ -141,14 +138,6 @@ int main(int argc, char* argv[]) {
     lattice.links[l].wt /= link_norm;
   }
 
-  // char lattice_path[200];
-  sprintf(lattice_path, "%s_lattice.dat", base_path);
-  lattice_file = fopen(lattice_path, "w");
-  assert(lattice_file != nullptr);
-  lattice.WriteLattice(lattice_file);
-  fclose(lattice_file);
-  // exit(0);
-
   int j_max = 12;
 
   // check integrator
@@ -165,7 +154,7 @@ int main(int argc, char* argv[]) {
           yjlm_sum += wt * y;
         }
         Complex yjlm_mean = yjlm_sum * sqrt(2.0 * M_PI * M_PI) / lattice.vol;
-        if (std::abs(yjlm_mean) < 1.0e-14) continue;
+        if (std::abs(yjlm_mean) < 1.0e-10) continue;
 
         fprintf(int_file, "%02d %02d %02d %+.12e %+.12e\n", j, l, m, real(yjlm_mean), imag(yjlm_mean));
       }

@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+typedef std::chrono::high_resolution_clock Clock;
+
 class Timer {
 
 public:
@@ -10,8 +12,8 @@ public:
   void Stop();
   double Duration();
 
-  std::chrono::high_resolution_clock::time_point start_time;
-  std::chrono::high_resolution_clock::time_point stop_time;
+  Clock::time_point start_time;
+  Clock::time_point stop_time;
   bool is_stopped;
 };
 
@@ -20,11 +22,13 @@ Timer::Timer() {
 }
 
 void Timer::Start() {
-  start_time = std::chrono::high_resolution_clock::now();
+  start_time = Clock::now();
+  is_stopped = false;
 }
 
 void Timer::Stop() {
-  stop_time = std::chrono::high_resolution_clock::now();
+  stop_time = Clock::now();
+  is_stopped = true;
 }
 
 double Timer::Duration() {
@@ -32,8 +36,8 @@ double Timer::Duration() {
   if (is_stopped) {
     dur = stop_time - start_time;
   } else {
-    std::chrono::high_resolution_clock::time_point curr_time;
-    curr_time = std::chrono::high_resolution_clock::now();
+    Clock::time_point curr_time;
+    curr_time = Clock::now();
     dur = curr_time - start_time;
   }
   return dur.count();

@@ -27,20 +27,9 @@ struct GrpElem {
 };
 
 enum OrbitType {
-  V,
-  E,
-  F,
-  C,
-  VE,
-  VF,
-  VC,
-  EF,
-  EC,
-  FC,
-  VEF,
-  VEC,
-  VFC,
-  EFC,
+  V, E, F, C,
+  VE, VF, VC, EF, EC, FC,
+  VEF, VEC, VFC, EFC,
   VEFC
 };
 

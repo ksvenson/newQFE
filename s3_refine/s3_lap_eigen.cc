@@ -98,9 +98,10 @@ int main(int argc, char* argv[]) {
   sprintf(eigen_path, "%s_eigen.dat", base_path);
   FILE* eigen_file = fopen(eigen_path, "w");
   assert(eigen_file != nullptr);
+  double norm_factor = cbrt(2.0 * M_PI * M_PI / double(lattice.n_sites))
   for (int i = 0; i < eig.size(); i++) {
     // printf("%06d %.12f\n", i, eig(i));
-    fprintf(eigen_file, "%04d %.12f\n", i, eig(i));
+    fprintf(eigen_file, "%04d %.12f\n", i, eig(i) * norm_factor);
   }
   fclose(eigen_file);
 

@@ -8,6 +8,7 @@
 #include "phi4.h"
 #include "s3.h"
 #include "statistics.h"
+#include "timer.h"
 
 int main(int argc, char* argv[]) {
 
@@ -23,6 +24,7 @@ int main(int argc, char* argv[]) {
   int n_metropolis = 4;
   double metropolis_z = 1.0;
   bool do_overrelax = false;
+  double wall_time = 0.0;
   std::string lattice_path = "../s3_refine/s3_std/q5k1_grid.dat";
   std::string data_dir = "phi4_s3_crit/q5k1";
 
@@ -40,10 +42,11 @@ int main(int argc, char* argv[]) {
     { "do_overrelax", no_argument, 0, 'o' },
     { "lattice_path", required_argument, 0, 'p' },
     { "data_dir", required_argument, 0, 'd' },
+    { "wall_time", required_argument, 0, 'W' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "S:Cm:L:h:t:s:w:e:z:op:d:";
+  const char* short_options = "S:Cm:L:h:t:s:w:e:z:op:d:W:";
 
   while (true) {
 
@@ -65,6 +68,7 @@ int main(int argc, char* argv[]) {
       case 'o': do_overrelax = true; break;
       case 'p': lattice_path = optarg; break;
       case 'd': data_dir = optarg; break;
+      case 'W': wall_time = std::stod(optarg); break;
       default: break;
     }
   }
@@ -75,6 +79,7 @@ int main(int argc, char* argv[]) {
   printf("n_wolff: %d\n", n_wolff);
   printf("n_metropolis: %d\n", n_metropolis);
   printf("overrelax: %s\n", do_overrelax ? "yes": "no");
+  printf("wall_time: %f\n", wall_time);
 
   QfeLatticeS3 lattice(0);
   printf("opening lattice file: %s\n", lattice_path.c_str());
@@ -132,6 +137,8 @@ int main(int argc, char* argv[]) {
   QfeMeasReal accept_overrelax;
   QfeMeasReal overrelax_demon;
 
+  Timer timer;
+
   for (int n = 0; n < (n_traj + n_therm); n++) {
 
     int cluster_size_sum = 0;
@@ -173,7 +180,13 @@ int main(int argc, char* argv[]) {
         n, action.last, \
         accept_metropolis.last, \
         cluster_size.last);
+
+
+    if (wall_time > 0.0 && timer.Duration() > wall_time) break;
   }
+
+  timer.Stop();
+  printf("duration: %.6f\n", timer.Duration());
 
   printf("cluster_size/V: %.4f\n", cluster_size.Mean());
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());

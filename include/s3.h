@@ -5,9 +5,9 @@
 #include <cassert>
 #include <cmath>
 #include <Eigen/Dense>
-#include "lattice.h"
 #include <boost/math/special_functions/gegenbauer.hpp>
 #include <boost/math/special_functions/spherical_harmonic.hpp>
+#include "lattice.h"
 
 typedef std::complex<double> Complex;
 typedef Eigen::Matrix<Complex, Eigen::Dynamic, Eigen::Dynamic> ComplexMat;
@@ -23,6 +23,7 @@ public:
   void ReadSite(FILE* file, int s);
   void Inflate();
   void UpdateAntipodes();
+  void CalcFEMWeights();
   Complex GetYjlm(int s, int j, int l, int m);
   Eigen::Vector4d EdgeCenter(int l);
   Eigen::Vector4d FaceCircumcenter(int f);
@@ -206,6 +207,103 @@ void QfeLatticeS3::UpdateAntipodes() {
   }
 }
 
+void QfeLatticeS3::CalcFEMWeights() {
+  // set site weights to zero
+  for (int s = 0; s < n_sites; s++) {
+    sites[s].wt = 0.0;
+  }
+
+  // set link weights to zero
+  for (int l = 0; l < n_links; l++) {
+    links[l].wt = 0.0;
+  }
+
+  // compute the DEC laplacian
+  for (int c = 0; c < n_cells; c++) {
+
+    cells[c].wt = CellVolume(c);
+
+    // coordinates of vertices
+    Eigen::Vector4d cell_r[5];
+    cell_r[0] = Eigen::Vector4d::Zero();  // distance from origin to each vertex is 1
+    cell_r[1] = r[cells[c].sites[0]];
+    cell_r[2] = r[cells[c].sites[1]];
+    cell_r[3] = r[cells[c].sites[2]];
+    cell_r[4] = r[cells[c].sites[3]];
+
+    // generate the Cayley-Menger matrix
+    Eigen::Matrix<double, 5, 5> CM;
+    for (int i = 0; i < 5; i++) {
+      CM(i,i) = 0.0;
+      for (int j = i + 1; j < 5; j++) {
+        CM(i,j) = (cell_r[i] - cell_r[j]).squaredNorm();
+        CM(j,i) = CM(i,j);
+      }
+    }
+
+    Eigen::Vector<double, 5> cell_lhs(1.0, 0.0, 0.0, 0.0, 0.0);
+    Eigen::Vector<double, 5> cell_xi = CM.inverse() * cell_lhs;
+    double cell_cr_sq = -cell_xi(0) / 2.0;
+
+    // i and j are 1-indexed in the Cayley-Menger matrix
+    for (int i = 1; i <= 4; i++) {
+      for (int j = i + 1; j <= 4; j++) {
+
+        // find the other two corners
+        int k = 1;
+        while (k == i || k == j) k++;
+        int l = k + 1;
+        while (l == i || l == j) l++;
+
+        double x_ijk = 2.0 * (CM(i,j) * CM(i,k) + CM(i,j) * CM(j,k) + CM(i,k) * CM(j,k))
+            - (CM(i,j) * CM(i,j) + CM(i,k) * CM(i,k) + CM(j,k) * CM(j,k));
+        double x_ijl = 2.0 * (CM(i,j) * CM(i,l) + CM(i,j) * CM(j,l) + CM(i,l) * CM(j,l))
+            - (CM(i,j) * CM(i,j) + CM(i,l) * CM(i,l) + CM(j,l) * CM(j,l));
+
+        double A_tri_ijk = 0.25 * sqrt(x_ijk);
+        double A_tri_ijl = 0.25 * sqrt(x_ijl);
+        double dual_ijk = CM(i,k) + CM(j,k) - CM(i,j);
+        double dual_ijl = CM(i,l) + CM(j,l) - CM(i,j);
+
+        double h_ijk = sqrt(cell_cr_sq - CM(i,j) * CM(i,k) * CM(j,k) / x_ijk);
+        double h_ijl = sqrt(cell_cr_sq - CM(i,j) * CM(i,l) * CM(j,l) / x_ijl);
+
+        // sign factor
+        if (cell_xi(l) < 0.0) h_ijk *= -1.0;
+        if (cell_xi(k) < 0.0) h_ijl *= -1.0;
+
+        double wt = (dual_ijk * h_ijk / A_tri_ijk + dual_ijl * h_ijl / A_tri_ijl) / 16.0;
+        int s_i = cells[c].sites[i - 1];
+        int s_j = cells[c].sites[j - 1];
+        int l_ij = FindLink(s_i, s_j);
+
+        // set FEM weights
+        links[l_ij].wt += wt;
+        sites[s_i].wt += wt * CM(i,j) / 6.0;
+        sites[s_j].wt += wt * CM(i,j) / 6.0;
+      }
+    }
+  }
+
+  double site_vol = 0.0;
+  for (int s = 0; s < n_sites; s++) {
+    site_vol += sites[s].wt;
+  }
+
+  // normalize site volume
+  vol = double(n_sites);
+  double site_norm = site_vol / vol;
+  for (int s = 0; s < n_sites; s++) {
+    sites[s].wt /= site_norm;
+  }
+
+  // normalize link weights
+  double link_norm = cbrt(site_norm);
+  for (int l = 0; l < n_links; l++) {
+    links[l].wt /= link_norm;
+  }
+}
+
 Complex QfeLatticeS3::GetYjlm(int s, int j, int l, int m) {
   double cos_xi = r[s].w();
   double xi = acos(cos_xi);
@@ -340,8 +438,10 @@ double QfeLatticeS3::CellVolume(int c) {
   A(2,0) = A02;
   A(2,1) = A12;
   A(2,2) = A22;
+  double det = A.determinant();
+  assert(det >= 0);
 
-  return sqrt(A.determinant()) / 6.0;
+  return sqrt(det) / 6.0;
 }
 
 /**

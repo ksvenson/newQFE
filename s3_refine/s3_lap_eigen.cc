@@ -70,6 +70,7 @@ int main(int argc, char* argv[]) {
   Spectra::SparseSymMatProd<double> op(M);
 
   // Construct eigen solver object, requesting the smallest 819 eigenvalues (up to j=12)
+  // total number of eigenvalues up to j is (x + 1)(x + 2)(2x + 3) / 6
   int ncv = 850 * 2;  // was 819
   if (lattice.n_sites < ncv) ncv = lattice.n_sites;
   int nev = 850;

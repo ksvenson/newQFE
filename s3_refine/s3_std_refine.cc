@@ -16,6 +16,105 @@
 
 typedef Eigen::Vector4<double> Vec4;
 
+enum OrbitType {
+  V, E, F, C,
+  VE, VF, VC, EF, EC, FC,
+  VEF, VEC, VFC, EFC,
+  VEFC
+};
+
+struct Orbit {
+  int id;
+  OrbitType type;
+  double dof[3];
+  std::string name;
+};
+
+Orbit CreateOrbit(int k, int x, int y, int z) {
+  // barycentric coordinates
+  std::vector<int> xi(4);
+  xi[0] = -x + y + z;
+  xi[1] = +x - y + z;
+  xi[2] = +x + y - z;
+  xi[3] = 2 * k - x - y - z;
+  std::sort(xi.begin(), xi.end());
+
+  Orbit orbit;
+  orbit.dof[0] = 0.0;
+  orbit.dof[1] = 0.0;
+  orbit.dof[2] = 0.0;
+
+  if (xi[3] == 2 * k) {
+    orbit.type = OrbitType::V;
+
+  } else if (xi[3] == k && xi[2] == k) {
+    orbit.type = OrbitType::E;
+
+  } else if (xi[3] == xi[2] && xi[2] == xi[1] && xi[0] == 0) {
+    orbit.type = OrbitType::F;
+
+  } else if (xi[3] == xi[2] && xi[3] == xi[1] && xi[3] == xi[0]) {
+    orbit.type = OrbitType::C;
+
+  } else if (xi[0] == 0 && xi[1] == 0) {
+    orbit.type = OrbitType::VE;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[0] == 0 && xi[1] == xi[2]) {
+    orbit.type = OrbitType::VF;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[0] == xi[1] && xi[1] == xi[2]) {
+    orbit.type = OrbitType::VC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[0] == 0 && xi[2] == xi[3]) {
+    orbit.type = OrbitType::EF;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[0] == xi[1] && xi[2] == xi[3]) {
+    orbit.type = OrbitType::EC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[3] == xi[2] && xi[2] == xi[1]) {
+    orbit.type = OrbitType::FC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+
+  } else if (xi[0] == 0) {
+    orbit.type = OrbitType::VEF;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+    orbit.dof[1] = double(xi[2]) / double(2 * k);
+
+  } else if (xi[0] == xi[1]) {
+    orbit.type = OrbitType::VEC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+    orbit.dof[1] = double(xi[2]) / double(2 * k);
+
+  } else if (xi[1] == xi[2]) {
+    orbit.type = OrbitType::VFC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+    orbit.dof[1] = double(xi[2]) / double(2 * k);
+
+  } else if (xi[2] == xi[3]) {
+    orbit.type = OrbitType::EFC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+    orbit.dof[1] = double(xi[1]) / double(2 * k);
+
+  } else {
+    orbit.type = OrbitType::VEFC;
+    orbit.dof[0] = double(xi[3]) / double(2 * k);
+    orbit.dof[1] = double(xi[2]) / double(2 * k);
+    orbit.dof[2] = double(xi[1]) / double(2 * k);
+  }
+
+  // generate a hashable name
+  char orbit_name[200];
+  sprintf(orbit_name, "%d_%d_%d_%d", xi[0], xi[1], xi[2], xi[3]);
+  orbit.name = std::string(orbit_name);
+
+  return orbit;
+}
+
 // create a hashable name to identify the coordinates of each vertex
 std::string VertexName(Vec4& v) {
   // deal with negative zero
@@ -37,16 +136,16 @@ std::string XYZName(int x, int y, int z) {
 
 // create a hashable name to identify a distinct orbit in a tetrahedron
 std::string OrbitName(int k, int x, int y, int z) {
-  std::vector<int> sorted(3);
-  sorted[0] = x;
-  sorted[1] = y;
-  sorted[2] = z;
-  for (int i = 0; i < 3; i++) {
-    if (sorted[i] > k / 2) sorted[i] = k - sorted[i];
-  }
-  std::sort(sorted.begin(), sorted.end());
+
+  // barycentric coordinates
+  std::vector<int> xi(4);
+  xi[0] = -x + y + z;
+  xi[1] = +x - y + z;
+  xi[2] = +x + y - z;
+  xi[3] = 2 * k - x - y - z;
+  std::sort(xi.begin(), xi.end());
   char orbit_name[200];
-  sprintf(orbit_name, "%d_%d_%d", sorted[0], sorted[1], sorted[2]);
+  sprintf(orbit_name, "%d_%d_%d_%d", xi[0], xi[1], xi[2], xi[3]);
   return std::string(orbit_name);
 }
 
@@ -75,8 +174,8 @@ int main(int argc, char* argv[]) {
 
   std::map<std::string, int> coord_map;
   std::map<std::string, int> orbit_map;
+  std::vector<Orbit> orbit_list;
   int s_next = 0;
-  int o_next = 0;
 
   // loop over cells of base polytope
   for (int c = 0; c < base_lattice.n_cells; c++) {
@@ -112,11 +211,14 @@ int main(int argc, char* argv[]) {
           if (coord_map.find(vec_name) == coord_map.end()) {
 
             // check if the orbit already exists
+            Orbit orbit = CreateOrbit(k, x, y, z);
             std::string orbit_name = OrbitName(k, x, y, z);
-            if (orbit_map.find(orbit_name) == orbit_map.end()) {
+            if (orbit_map.find(orbit.name) == orbit_map.end()) {
               // create a new orbit
-              orbit_map[orbit_name] = o_next;
-              o_next++;
+              orbit.id = orbit_list.size();
+              orbit_map[orbit.name] = orbit.id;
+              orbit_list.push_back(orbit);
+              // printf("%s %d\n", orbit.name.c_str(), orbit.type);
             }
 
             // printf("%06d %.12f %.12f %.12f %.12f\n", s_next, v.x(), v.y(), v.z(), v.w());
@@ -126,7 +228,7 @@ int main(int argc, char* argv[]) {
             lattice.r[s_next] = v;
             lattice.sites[s_next].nn = 0;
             lattice.sites[s_next].wt = 1.0;
-            lattice.sites[s_next].id = orbit_map[orbit_name];
+            lattice.sites[s_next].id = orbit_map[orbit.name];
             s_next++;
             assert(s_next <= lattice.n_sites);
           }
@@ -198,6 +300,18 @@ int main(int argc, char* argv[]) {
   assert(grid_file != nullptr);
   lattice.WriteLattice(grid_file);
   fclose(grid_file);
+
+  // generate an orbit file
+  char orbit_path[200];
+  sprintf(orbit_path, "s3_std/q%dk%d_orbit.dat", q, k);
+  FILE* orbit_file = fopen(orbit_path, "w");
+  assert(orbit_file != nullptr);
+  for (int o = 0; o < orbit_list.size(); o++) {
+    Orbit* orbit = &orbit_list[o];
+    fprintf(orbit_file, "%04d %02d %.16f %.16f %.16f\n", \
+      orbit->id, orbit->type, orbit->dof[0], orbit->dof[1], orbit->dof[2]);
+  }
+  fclose(orbit_file);
 
   return 0;
 }

@@ -16,10 +16,12 @@
 // Journal für die reine und angewandte Mathematik (Crelles
 // Journal) 1974, 160–169 (1974).
 
+typedef long double Real;
+
 // SO(4) group element struct
 struct GrpElemSO4 {
-  Eigen::Quaternion<long double> l;
-  Eigen::Quaternion<long double> r;
+  Eigen::Quaternion<Real> l;
+  Eigen::Quaternion<Real> r;
   bool star;
   std::string name;
 };
@@ -83,7 +85,7 @@ int main(int argc, char* argv[]) {
 
   if (q == 4) {
     // generators for 16-cell symmetries
-    const long double sqrt1_2 = 0.70710678118654752440L;
+    const Real sqrt1_2 = 0.70710678118654752440L;
     G.resize(6);
     G[0].l = {1.0, 0.0, 0.0, 0.0};
     G[0].r = {1.0, 0.0, 0.0, 0.0};
@@ -107,8 +109,8 @@ int main(int argc, char* argv[]) {
   } else if (q == 5) {
 
     // generators for 600-cell symmetries
-    const long double alpha = 0.80901699437494742410L;
-    const long double beta = 0.30901699437494742410L;
+    const Real alpha = 0.80901699437494742410L;
+    const Real beta = 0.30901699437494742410L;
     G.resize(34);
 
     // K1

@@ -19,38 +19,13 @@ int main(int argc, char* argv[]) {
 
   QfeLatticeS3 lattice(0);
 
-  // // read lattice
-  // char lattice_path[200];
-  // sprintf(lattice_path, "%s_lattice.dat", base_path);
-  // FILE* lattice_file = fopen(lattice_path, "r");
-  // assert(lattice_file != nullptr);
-  // lattice.ReadLattice(lattice_file);
-  // fclose(lattice_file);
-
-  // read site coordinates
-  char grid_path[200];
-  sprintf(grid_path, "%s_grid.dat", base_path);
-  FILE* grid_file = fopen(grid_path, "r");
-  assert(grid_file != nullptr);
-  lattice.ReadLattice(grid_file);
-  fclose(grid_file);
-
-  // read convex hull cells
-  if (lattice.n_cells == 0) {
-    char hull_path[200];
-    sprintf(hull_path, "%s_hull.dat", base_path);
-    FILE* hull_file = fopen(hull_path, "r");
-    assert(hull_file != nullptr);
-    int n_cells;
-    fscanf(hull_file, "%d", &n_cells);
-    printf("n_cells: %d\n", n_cells);
-    for (int c = 0; c < n_cells; c++) {
-      int s_a, s_b, s_c, s_d;
-      fscanf(hull_file, "%d %d %d %d ", &s_a, &s_b, &s_c, &s_d);
-      lattice.AddCell(s_a, s_b, s_c, s_d);
-    }
-    fclose(hull_file);
-  }
+  // read lattice
+  char lattice_path[200];
+  sprintf(lattice_path, "%s_uniform.dat", base_path);
+  FILE* lattice_file = fopen(lattice_path, "r");
+  assert(lattice_file != nullptr);
+  lattice.ReadLattice(lattice_file);
+  fclose(lattice_file);
 
   // set site FEM weights to zero
   for (int s = 0; s < lattice.n_sites; s++) {
@@ -153,25 +128,26 @@ int main(int argc, char* argv[]) {
   if (isnan(site_vol) || isnan(cell_vol)) exit(1);
   if (fabs(site_vol - cell_vol) > 1.0e-4) exit(1);
 
-  // // normalize site volume
-  // double site_norm = site_vol / (2.0 * M_PI * M_PI);
-  // for (int s = 0; s < lattice.n_sites; s++) {
-  //   lattice.sites[s].wt /= site_norm;
-  // }
-  //
-  // // normalize link weights
-  // // double link_norm = cbrt(site_norm);
-  // double link_norm = cbrt(cell_vol / (2.0 * M_PI * M_PI));
-  // for (int l = 0; l < lattice.n_links; l++) {
-  //   lattice.links[l].wt /= link_norm;
-  // }
+  // normalize site volume
+  lattice.vol = double(lattice.n_sites);
+  double site_norm = site_vol / lattice.vol;
+  for (int s = 0; s < lattice.n_sites; s++) {
+    lattice.sites[s].wt /= site_norm;
+  }
 
-  char lattice_path[200];
+  // normalize link weights
+  double link_norm = cbrt(site_norm);
+  for (int l = 0; l < lattice.n_links; l++) {
+    lattice.links[l].wt /= link_norm;
+  }
+
+  // char lattice_path[200];
   sprintf(lattice_path, "%s_lattice.dat", base_path);
-  FILE* lattice_file = fopen(lattice_path, "w");
+  lattice_file = fopen(lattice_path, "w");
   assert(lattice_file != nullptr);
   lattice.WriteLattice(lattice_file);
   fclose(lattice_file);
+  // exit(0);
 
   int j_max = 12;
 
@@ -188,7 +164,7 @@ int main(int argc, char* argv[]) {
           double wt = lattice.sites[s].wt;
           yjlm_sum += wt * y;
         }
-        Complex yjlm_mean = yjlm_sum / sqrt(2.0 * M_PI * M_PI);
+        Complex yjlm_mean = yjlm_sum * sqrt(2.0 * M_PI * M_PI) / lattice.vol;
         if (std::abs(yjlm_mean) < 1.0e-14) continue;
 
         fprintf(int_file, "%02d %02d %02d %+.12e %+.12e\n", j, l, m, real(yjlm_mean), imag(yjlm_mean));
@@ -215,7 +191,7 @@ int main(int argc, char* argv[]) {
           double wt = lattice.links[link].wt;
           yjlm_sum += wt * std::norm(y_a - y_b);
         }
-        double yjlm_mean = yjlm_sum / double(1);
+        double yjlm_mean = yjlm_sum * cbrt(2.0 * M_PI * M_PI / lattice.vol);
 
         fprintf(lap_file, "%02d %02d %02d %+.12e\n", j, l, m, yjlm_mean);
       }

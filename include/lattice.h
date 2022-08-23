@@ -247,7 +247,7 @@ void QfeLattice::ReadLattice(FILE* file) {
 }
 
 void QfeLattice::WriteSite(FILE* file, int s) {
-  fprintf(file, "%04d %.20f %04d", s, sites[s].wt, sites[s].id);
+  fprintf(file, "%04d %.18f %04d", s, sites[s].wt, sites[s].id);
 }
 
 void QfeLattice::ReadSite(FILE* file, int s) {
@@ -259,7 +259,7 @@ void QfeLattice::ReadSite(FILE* file, int s) {
 }
 
 void QfeLattice::WriteLink(FILE* file, int l) {
-  fprintf(file, "%04d %.20f %04d %04d", l, links[l].wt, \
+  fprintf(file, "%04d %.18f %04d %04d", l, links[l].wt, \
       links[l].sites[0], links[l].sites[1]);
 }
 
@@ -275,7 +275,7 @@ void QfeLattice::ReadLink(FILE* file, int l) {
 }
 
 void QfeLattice::WriteFace(FILE* file, int f) {
-  fprintf(file, "%04d %.20f %04d %04d %04d", f, faces[f].wt, \
+  fprintf(file, "%04d %.18f %04d %04d %04d", f, faces[f].wt, \
     faces[f].sites[0], faces[f].sites[1], faces[f].sites[2]);
 }
 
@@ -291,7 +291,7 @@ void QfeLattice::ReadFace(FILE* file, int f) {
 }
 
 void QfeLattice::WriteCell(FILE* file, int c) {
-  fprintf(file, "%04d %.20f %04d %04d %04d %04d", c, cells[c].wt, \
+  fprintf(file, "%04d %.18f %04d %04d %04d %04d", c, cells[c].wt, \
     cells[c].sites[0], cells[c].sites[1], cells[c].sites[2], cells[c].sites[3]);
 }
 

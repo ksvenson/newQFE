@@ -102,24 +102,24 @@ int main(int argc, char* argv[]) {
     field.HotStart();
   }
   field.metropolis_z = metropolis_z;
-  printf("msq: %.4f\n", field.msq);
+  printf("msq: %.6f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
 
-  // // calculate ricci curvature term
-  // std::vector<double> ricci_scalar(lattice.n_distinct);
-  // for (int id = 0; id < lattice.n_distinct; id++) {
-  //   int s_i = lattice.distinct_first[id];
-  //   Eigen::Vector4d r_ric = Eigen::Vector4d::Zero();
-  //   for (int n = 0; n < lattice.sites[s_i].nn; n++) {
-  //     int l = lattice.sites[s_i].links[n];
-  //     int s_j = lattice.sites[s_i].neighbors[n];
-  //     r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
-  //   }
-  //   ricci_scalar[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
-  //   printf("%04d %.12f\n", id, ricci_scalar[id]);
-  // }
+  // calculate ricci curvature term
+  std::vector<double> ricci_scalar(lattice.n_distinct);
+  for (int id = 0; id < lattice.n_distinct; id++) {
+    int s_i = lattice.distinct_first[id];
+    Eigen::Vector4d r_ric = Eigen::Vector4d::Zero();
+    for (int n = 0; n < lattice.sites[s_i].nn; n++) {
+      int l = lattice.sites[s_i].links[n];
+      int s_j = lattice.sites[s_i].neighbors[n];
+      r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
+    }
+    ricci_scalar[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
+    printf("%04d %.12f\n", id, ricci_scalar[id] / 6.0);
+  }
 
   // // apply ricci term to all sites
   // for (int s = 0; s < lattice.n_sites; s++) {
@@ -205,7 +205,7 @@ int main(int argc, char* argv[]) {
 
   // open an output file
   char run_id[200];
-  sprintf(run_id, "l%.4fm%.4f", lambda, -msq);
+  sprintf(run_id, "l%.4fm%.6f", lambda, -msq);
 
   char data_path[200];
   sprintf(data_path, "%s/%s/%s_%08X.dat", \

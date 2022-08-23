@@ -181,10 +181,10 @@ void QfeLatticeS3::UpdateAntipodes() {
   for (int s = 0; s < n_sites; s++) {
 
     // find antipode
-    int x_int = int(round(r[s].x() * 1.0e9));
-    int y_int = int(round(r[s].y() * 1.0e9));
-    int z_int = int(round(r[s].z() * 1.0e9));
-    int w_int = int(round(r[s].w() * 1.0e9));
+    int x_int = int(round(r[s].x() * 1.0e6));
+    int y_int = int(round(r[s].y() * 1.0e6));
+    int z_int = int(round(r[s].z() * 1.0e6));
+    int w_int = int(round(r[s].w() * 1.0e6));
     sprintf(key, "%+d,%+d,%+d,%+d", x_int, y_int, z_int, w_int);
     sprintf(anti_key, "%+d,%+d,%+d,%+d", -x_int, -y_int, -z_int, -w_int);
 

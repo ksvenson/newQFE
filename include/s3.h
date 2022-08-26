@@ -219,9 +219,11 @@ void QfeLatticeS3::CalcFEMWeights() {
   }
 
   // compute the DEC laplacian
+  double cell_vol = 0.0;
   for (int c = 0; c < n_cells; c++) {
 
     cells[c].wt = CellVolume(c);
+    cell_vol += cells[c].wt;
 
     // coordinates of vertices
     Eigen::Vector4d cell_r[5];
@@ -301,6 +303,12 @@ void QfeLatticeS3::CalcFEMWeights() {
   double link_norm = cbrt(site_norm);
   for (int l = 0; l < n_links; l++) {
     links[l].wt /= link_norm;
+  }
+
+  // normalize cell volume
+  double cell_norm = cell_vol / double(n_cells);
+  for (int c = 0; c < n_cells; c++) {
+    cells[c].wt /= cell_norm;
   }
 }
 

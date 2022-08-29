@@ -9,6 +9,7 @@
 #include "phi4.h"
 #include "s3.h"
 #include "statistics.h"
+#include "timer.h"
 
 typedef std::complex<double> Complex;
 
@@ -115,7 +116,7 @@ int main(int argc, char* argv[]) {
     field.HotStart();
   }
   field.metropolis_z = metropolis_z;
-  printf("msq: %.4f\n", field.msq);
+  printf("msq: %.6f\n", field.msq);
   printf("lambda: %.4f\n", field.lambda);
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
@@ -140,6 +141,28 @@ int main(int argc, char* argv[]) {
     field.msq_ct[s] = ricci_scalar[id] / 6.0;  // = 1 / 4 R^2
   }
 
+  // calculate hyperspherical harmonics at each site
+  // in all of these loops, (y_j, y_l, y_m) are the integer eigenvalues
+  // of the hyperspherical harmonics and y_i is a sequential index over
+  // all of eigenvalues up to j_max (excluding negative y_m).
+  Eigen::MatrixXcd yjlm(lattice.n_sites, n_yjlm);
+  for (int s = 0; s < lattice.n_sites; s++) {
+    for (int y_i = 0, y_j = 0, y_l = 0, y_m = 0; y_i < n_yjlm; y_i++) {
+
+      yjlm(s, y_i) = lattice.GetYjlm(s, y_j, y_l, y_m);
+
+      y_m++;
+      if (y_m > y_l) {
+        y_l++;
+        y_m = 0;
+        if (y_l > y_j) {
+          y_j++;
+          y_l = 0;
+        }
+      }
+    }
+  }
+
   // measurements
   std::vector<QfeMeasReal> legendre_2pt(j_max + 1);
   std::vector<QfeMeasReal> legendre_4pt(j_max + 1);
@@ -153,7 +176,11 @@ int main(int argc, char* argv[]) {
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
 
+  Timer timer;
+
   for (int n = 0; n < (n_traj + n_therm); n++) {
+
+    if (wall_time > 0.0 && timer.Duration() > wall_time) break;
 
     int cluster_size_sum = 0;
     for (int j = 0; j < n_wolff; j++) {
@@ -182,14 +209,10 @@ int main(int argc, char* argv[]) {
       mag_sum += wt_2pt;
       anti_2pt_sum += wt_4pt;
 
-      for (int y_j = 0, y_i = 0; y_j <= j_max; y_j++) {
-        for (int y_l = 0; y_l <= y_j; y_l++) {
-          for (int y_m = 0; y_m <= y_l; y_m++, y_i++) {
-            Complex y = lattice.GetYjlm(s, y_j, y_l, y_m);
-            yjlm_2pt_sum[y_i] += y * wt_2pt;
-            yjlm_4pt_sum[y_i] += y * wt_4pt;
-          }
-        }
+      for (int y_i = 0; y_i < n_yjlm; y_i++) {
+        Complex y = yjlm(s, y_i);
+        yjlm_2pt_sum[y_i] += y * wt_2pt;
+        yjlm_4pt_sum[y_i] += y * wt_4pt;
       }
     }
 
@@ -232,6 +255,9 @@ int main(int argc, char* argv[]) {
         cluster_size.last);
   }
 
+  timer.Stop();
+  printf("duration: %.6f\n", timer.Duration());
+
   printf("cluster_size/V: %.4f\n", cluster_size.Mean());
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
 
@@ -244,7 +270,7 @@ int main(int argc, char* argv[]) {
 
   // open an output file
   char run_id[200];
-  sprintf(run_id, "l%.4fm%.4f", lambda, -msq);
+  sprintf(run_id, "l%.4fm%.6f", lambda, -msq);
 
   char data_path[200];
   sprintf(data_path, "%s/%s/%s_%08X.dat", \

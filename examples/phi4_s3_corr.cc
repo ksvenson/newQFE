@@ -28,7 +28,9 @@ int main(int argc, char* argv[]) {
   int n_metropolis = 4;
   double metropolis_z = 1.0;
   bool do_overrelax = false;
+  bool use_ricci = false;
   double wall_time = 0.0;
+  std::string ct_path = "";
   std::string lattice_path = "../s3_refine/s3_std/q5k1_grid.dat";
   std::string data_dir = "phi4_s3_corr/q5k1";
 
@@ -45,13 +47,15 @@ int main(int argc, char* argv[]) {
     { "n_metropolis", required_argument, 0, 'e' },
     { "metropolis_z", required_argument, 0, 'z' },
     { "do_overrelax", no_argument, 0, 'o' },
+    { "use_ricci", no_argument, 0, 'R' },
+    { "ct_path", required_argument, 0, 'c' },
     { "lattice_path", required_argument, 0, 'p' },
     { "data_dir", required_argument, 0, 'd' },
     { "wall_time", required_argument, 0, 'W' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "S:Cm:L:j:h:t:s:w:e:z:op:d:W:";
+  const char* short_options = "S:Cm:L:j:h:t:s:w:e:z:oRc:p:d:W:";
 
   while (true) {
 
@@ -72,6 +76,8 @@ int main(int argc, char* argv[]) {
       case 'e': n_metropolis = atoi(optarg); break;
       case 'z': metropolis_z = std::stod(optarg); break;
       case 'o': do_overrelax = true; break;
+      case 'R': use_ricci = true; break;
+      case 'c': ct_path = optarg; break;
       case 'p': lattice_path = optarg; break;
       case 'd': data_dir = optarg; break;
       case 'W': wall_time = std::stod(optarg); break;
@@ -84,7 +90,8 @@ int main(int argc, char* argv[]) {
   printf("n_skip: %d\n", n_skip);
   printf("n_wolff: %d\n", n_wolff);
   printf("n_metropolis: %d\n", n_metropolis);
-  printf("overrelax: %s\n", do_overrelax ? "yes": "no");
+  printf("do_overrelax: %s\n", do_overrelax ? "yes": "no");
+  printf("use_ricci: %s\n", use_ricci ? "yes": "no");
   printf("wall_time: %f\n", wall_time);
 
   // number of hyperspherical harmonics to measure
@@ -121,24 +128,48 @@ int main(int argc, char* argv[]) {
   printf("metropolis_z: %.4f\n", field.metropolis_z);
   printf("initial action: %.12f\n", field.Action());
 
-  // calculate ricci curvature term
-  std::vector<double> ricci_scalar(lattice.n_distinct);
-  for (int id = 0; id < lattice.n_distinct; id++) {
-    int s_i = lattice.distinct_first[id];
-    Eigen::Vector4d r_ric = Eigen::Vector4d::Zero();
-    for (int n = 0; n < lattice.sites[s_i].nn; n++) {
-      int l = lattice.sites[s_i].links[n];
-      int s_j = lattice.sites[s_i].neighbors[n];
-      r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
+  if (use_ricci) {
+    // calculate ricci curvature term
+    std::vector<double> ricci_scalar(lattice.n_distinct);
+    for (int id = 0; id < lattice.n_distinct; id++) {
+      int s_i = lattice.distinct_first[id];
+      Eigen::Vector4d r_ric = Eigen::Vector4d::Zero();
+      for (int n = 0; n < lattice.sites[s_i].nn; n++) {
+        int l = lattice.sites[s_i].links[n];
+        int s_j = lattice.sites[s_i].neighbors[n];
+        r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
+      }
+      ricci_scalar[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
+      // printf("%04d %.12f\n", id, ricci_scalar[id] / 6.0);
     }
-    ricci_scalar[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
-    printf("%04d %.12f\n", id, ricci_scalar[id] / 6.0);
+
+    // apply ricci term to all sites
+    for (int s = 0; s < lattice.n_sites; s++) {
+      int id = lattice.sites[s].id;
+      field.msq_ct[s] = ricci_scalar[id] / 6.0;  // = 1 / 4 R^2
+    }
   }
 
-  // apply ricci term to all sites
-  for (int s = 0; s < lattice.n_sites; s++) {
-    int id = lattice.sites[s].id;
-    field.msq_ct[s] = ricci_scalar[id] / 6.0;  // = 1 / 4 R^2
+  // open the counter term file
+  if (!ct_path.empty()) {
+    printf("opening counterterm file: %s\n", ct_path.c_str());
+    FILE* ct_file = fopen(ct_path.c_str(), "r");
+    assert(ct_file != nullptr);
+
+    // read the counter terms
+    std::vector<double> ct(lattice.n_distinct);
+    std::vector<double> ct3(lattice.n_distinct);
+    for (int i = 0; i < lattice.n_distinct; i++) {
+      fscanf(ct_file, "%lf %lf", &ct[i], &ct3[i]);
+    }
+    fclose(ct_file);
+
+    // apply the counter terms to each site
+    for (int s = 0; s < lattice.n_sites; s++) {
+      int id = lattice.sites[s].id;
+      field.msq_ct[s] += -12.0 * field.lambda * ct[id];
+      field.msq_ct[s] += 48.0 * field.lambda * field.lambda * ct3[id];
+    }
   }
 
   // calculate hyperspherical harmonics at each site
@@ -362,8 +393,8 @@ int main(int argc, char* argv[]) {
     printf("yjlm_2pt_%02d_%02d_%02d:", y_j, y_l, y_m);
     printf(" %.12e", yjlm_2pt[y_i].Mean());
     printf(" %.12e", yjlm_2pt[y_i].Error());
-    printf(" %.2f", yjlm_2pt[y_i].AutocorrFront());
-    printf(" %.2f\n", yjlm_2pt[y_i].AutocorrBack());
+    printf(" %.4f", yjlm_2pt[y_i].AutocorrFront());
+    printf(" %.4f\n", yjlm_2pt[y_i].AutocorrBack());
     fprintf(data_file, "%04d %.16e %.16e %d\n", y_i, \
         yjlm_2pt[y_i].Mean(), yjlm_2pt[y_i].Error(), \
         yjlm_2pt[y_i].n);

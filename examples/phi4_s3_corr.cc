@@ -197,6 +197,7 @@ int main(int argc, char* argv[]) {
   // measurements
   std::vector<QfeMeasReal> legendre_2pt(j_max + 1);
   std::vector<QfeMeasReal> legendre_4pt(j_max + 1);
+  // std::vector<QfeMeasReal> gegenbauer_2pt(j_max + 1);
   std::vector<QfeMeasReal> yjlm_2pt(n_yjlm);
   std::vector<QfeMeasReal> yjlm_4pt(n_yjlm);
   QfeMeasReal anti_2pt;  // antipodal 2-point function
@@ -206,6 +207,8 @@ int main(int argc, char* argv[]) {
   QfeMeasReal action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
+  QfeMeasReal accept_overrelax;
+  QfeMeasReal overrelax_demon;
 
   Timer timer;
 
@@ -224,11 +227,20 @@ int main(int argc, char* argv[]) {
     cluster_size.Measure(double(cluster_size_sum) / vol);
     accept_metropolis.Measure(metropolis_sum);
 
+    if (do_overrelax) {
+      accept_overrelax.Measure(field.Overrelax());
+    }
+
     if (n % n_skip || n < n_therm) continue;
+
+    if (do_overrelax) {
+      overrelax_demon.Measure(field.overrelax_demon);
+    }
 
     // measure correlators
     std::vector<Complex> yjlm_2pt_sum(n_yjlm, 0.0);
     std::vector<Complex> yjlm_4pt_sum(n_yjlm, 0.0);
+    // std::vector<double> gegenbauer_2pt_sum(j_max + 1, 0.0);
     double mag_sum = 0.0;
     double anti_2pt_sum = 0.0;
 
@@ -245,6 +257,15 @@ int main(int argc, char* argv[]) {
         yjlm_2pt_sum[y_i] += y * wt_2pt;
         yjlm_4pt_sum[y_i] += y * wt_4pt;
       }
+
+      // for (int s1 = 0; s1 < lattice.n_sites; s1++) {
+      //   double cos_theta = lattice.r[s].dot(lattice.r[s1]);
+      //   if (s == s1) cos_theta = 1.0;
+      //   if (a == s1) cos_theta = -1.0;
+      //   for (int y_j = 0; y_j <= j_max; y_j++) {
+      //     gegenbauer_2pt_sum[y_j] += 0.25 / pow(M_PI, 4.0) * boost::math::gegenbauer(y_j, 1.0, cos_theta) * wt_2pt * field.phi[s1] * lattice.sites[s1].wt;
+      //   }
+      // }
     }
 
     double legendre_2pt_sum = 0.0;
@@ -261,7 +282,8 @@ int main(int argc, char* argv[]) {
         y_l++;
         y_m = 0;
         if (y_l > y_j) {
-          double coeff = 2.0 * M_PI * M_PI / double((y_j + 1) * (y_j + 1));
+          // gegenbauer_2pt[y_j].Measure(gegenbauer_2pt_sum[y_j] / vol_sq);
+          double coeff = 1.0 / (2.0 * M_PI * M_PI) / double(y_j + 1);
           legendre_2pt[y_j].Measure(legendre_2pt_sum * coeff);
           legendre_4pt[y_j].Measure(legendre_4pt_sum * coeff);
           legendre_2pt_sum = 0.0;
@@ -291,6 +313,11 @@ int main(int argc, char* argv[]) {
 
   printf("cluster_size/V: %.4f\n", cluster_size.Mean());
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
+  if (do_overrelax) {
+    printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
+    printf("overrelax_demon: %.12f %.12f\n", \
+        overrelax_demon.Mean(), overrelax_demon.Error());
+  }
 
   double m_mean = mag.Mean();
   double m_err = mag.Error();
@@ -346,6 +373,15 @@ int main(int argc, char* argv[]) {
   printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
 
   fclose(data_file);
+
+  // // print 2-point function gegenbauer coefficients
+  // for (int j = 0; j <= j_max; j++) {
+  //   printf("gegenbauer_2pt_%02d:", j);
+  //   printf(" %.12e", gegenbauer_2pt[j].Mean());
+  //   printf(" %.12e", gegenbauer_2pt[j].Error());
+  //   printf(" %.4f", gegenbauer_2pt[j].AutocorrFront());
+  //   printf(" %.4f\n", gegenbauer_2pt[j].AutocorrBack());
+  // }
 
   // print 2-point function legendre coefficients
   sprintf(data_path, "%s/%s/%s_legendre_2pt_%08X.dat", \

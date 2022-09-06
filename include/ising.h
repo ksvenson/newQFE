@@ -135,16 +135,20 @@ int QfeIsing::WolffUpdate() {
       // skip if the site is already clustered
       if (is_clustered[s]) continue;
 
-      // skip if sign bits don't match
-      if (std::signbit(value) != std::signbit(spin[s])) continue;
+      // check if link is clustered
+      double rate = -2.0 * (beta + beta_ct[l]) * value * spin[s] * link_wt;
+      if (rate >= 0.0 || lattice->rng.RandReal() < exp(rate)) continue;
 
-      double prob = 1.0 - exp(-2.0 * (beta + beta_ct[l]) * link_wt);
-      if (lattice->rng.RandReal() < prob) {
-        // add the site to the cluster
-        wolff_cluster.push_back(s);
-        is_clustered[s] = true;
-        stack.push(s);
-      }
+      // // skip if sign bits don't match
+      // if (std::signbit(value) != std::signbit(spin[s])) continue;
+      //
+      // double prob = 1.0 - exp(-2.0 * (beta + beta_ct[l]) * link_wt);
+      // if (lattice->rng.RandReal() < prob) {
+      // add the site to the cluster
+      wolff_cluster.push_back(s);
+      is_clustered[s] = true;
+      stack.push(s);
+      // }
     }
   }
 
@@ -163,13 +167,11 @@ int QfeIsing::SWUpdate() {
   for (int l = 0; l < lattice->n_links; l++) {
     int s1 = lattice->links[l].sites[0];
     int s2 = lattice->links[l].sites[1];
-
-    // skip if spins don't match
-    if (std::signbit(spin[s1]) != std::signbit(spin[s2])) continue;
-
     double link_wt = lattice->links[l].wt;
-    double prob = exp(-2.0 * (beta + beta_ct[l]) * link_wt);
-    if (lattice->rng.RandReal() < prob) continue;
+
+    // check if link is clustered
+    double rate = -2.0 * (beta + beta_ct[l]) * spin[s1] * spin[s2] * link_wt;
+    if (rate >= 0.0 || lattice->rng.RandReal() < exp(rate)) continue;
 
     // find the root node for each site
     int r1 = FindSWRoot(s1);

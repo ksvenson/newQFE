@@ -236,16 +236,14 @@ int QfePhi4::WolffUpdate() {
       // skip sites at dirichlet boundary
       if (is_fixed[s]) continue;
 
-      // skip if sign bits don't match
-      if (std::signbit(value) != std::signbit(phi[s])) continue;
+      // check if link is clustered
+      double rate = -2.0 * value * phi[s] * link_wt;
+      if (rate > 0.0 || lattice->rng.RandReal() < exp(rate)) continue;
 
-      double prob = 1.0 - exp(-2.0 * value * phi[s] * link_wt);
-      if (lattice->rng.RandReal() < prob) {
-        // add the site to the cluster
-        wolff_cluster.push_back(s);
-        is_clustered[s] = true;
-        stack.push(s);
-      }
+      // add the site to the cluster
+      wolff_cluster.push_back(s);
+      is_clustered[s] = true;
+      stack.push(s);
     }
   }
 
@@ -264,13 +262,11 @@ int QfePhi4::SWUpdate() {
   for (int l = 0; l < lattice->n_links; l++) {
     int s1 = lattice->links[l].sites[0];
     int s2 = lattice->links[l].sites[1];
-
-    // skip if spins don't match
-    if (std::signbit(phi[s1]) != std::signbit(phi[s2])) continue;
-
     double link_wt = lattice->links[l].wt;
-    double prob = exp(-2.0 * phi[s1] * phi[s2] * link_wt);
-    if (lattice->rng.RandReal() < prob) continue;
+
+    // check if link is clustered
+    double rate = -2.0 * phi[s1] * phi[s2] * link_wt;
+    if (rate > 0.0 || lattice->rng.RandReal() < exp(rate)) continue;
 
     // find the root node for each site
     int r1 = FindSWRoot(s1);

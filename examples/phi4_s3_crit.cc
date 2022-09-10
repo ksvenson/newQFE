@@ -118,13 +118,13 @@ int main(int argc, char* argv[]) {
       r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
     }
     ricci_scalar[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
-    printf("%04d %.12f\n", id, ricci_scalar[id] / 6.0);
+    printf("%04d %.12f\n", id, ricci_scalar[id] / 2.0);
   }
 
   // apply ricci term to all sites
   for (int s = 0; s < lattice.n_sites; s++) {
     int id = lattice.sites[s].id;
-    field.msq_ct[s] = ricci_scalar[id] / 6.0;  // = 1 / 4 R^2
+    field.msq_ct[s] = ricci_scalar[id] / 2.0;  // = 3 / 4 R^2
   }
 
   // measurements

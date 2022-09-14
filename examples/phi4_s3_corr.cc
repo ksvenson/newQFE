@@ -129,7 +129,12 @@ int main(int argc, char* argv[]) {
   printf("initial action: %.12f\n", field.Action());
 
   if (use_ricci) {
-    // calculate ricci curvature term
+
+    // calculate global ricci curvature term
+    double global_ricci = 0.75 * pow(2.0 * M_PI * M_PI / lattice.vol, 2.0 / 3.0);
+    // printf("global_ricci: %.12f\n", global_ricci);
+
+    // calculate local ricci curvature term
     std::vector<double> ricci_scalar(lattice.n_distinct);
     for (int id = 0; id < lattice.n_distinct; id++) {
       int s_i = lattice.distinct_first[id];
@@ -145,8 +150,9 @@ int main(int argc, char* argv[]) {
 
     // apply ricci term to all sites
     for (int s = 0; s < lattice.n_sites; s++) {
-      int id = lattice.sites[s].id;
-      field.msq_ct[s] = ricci_scalar[id] / 2.0;  // = 3 / 4 R^2
+      // int id = lattice.sites[s].id;
+      // field.msq_ct[s] = ricci_scalar[id] / 2.0;  // = 3 / 4 R^2
+      field.msq_ct[s] = global_ricci;
     }
   }
 

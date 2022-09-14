@@ -210,6 +210,10 @@ int main(int argc, char* argv[]) {
   QfeMeasReal mag;  // magnetization
   QfeMeasReal mag_2;  // magnetization^2
   QfeMeasReal mag_4;  // magnetization^4
+  QfeMeasReal mag_6;  // magnetization^6
+  QfeMeasReal mag_8;  // magnetization^8
+  QfeMeasReal mag_10;  // magnetization^10
+  QfeMeasReal mag_12;  // magnetization^12
   QfeMeasReal action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
@@ -306,6 +310,10 @@ int main(int argc, char* argv[]) {
     mag.Measure(fabs(m));
     mag_2.Measure(m_sq);
     mag_4.Measure(m_sq * m_sq);
+    mag_6.Measure(mag_4.last * m_sq);
+    mag_8.Measure(mag_6.last * m_sq);
+    mag_10.Measure(mag_8.last * m_sq);
+    mag_12.Measure(mag_10.last * m_sq);
     anti_2pt.Measure(anti_2pt_sum / lattice.vol);
     action.Measure(field.Action());
     printf("%06d %.12f %.4f %.4f\n", \
@@ -362,6 +370,26 @@ int main(int argc, char* argv[]) {
       mag_4.AutocorrFront(), mag_4.AutocorrBack());
   fprintf(data_file, "mag^4 %.16e %.16e %d\n", \
       m4_mean, m4_err, mag_4.n);
+  printf("m^6: %.12e %.12e %.4f %.4f\n", \
+      mag_6.Mean(), mag_6.Error(), \
+      mag_6.AutocorrFront(), mag_6.AutocorrBack());
+  fprintf(data_file, "mag^6 %.16e %.16e %d\n", \
+      mag_6.Mean(), mag_6.Error(), mag_6.n);
+  printf("m^8: %.12e %.12e %.4f %.4f\n", \
+      mag_8.Mean(), mag_8.Error(), \
+      mag_8.AutocorrFront(), mag_8.AutocorrBack());
+  fprintf(data_file, "mag^8 %.16e %.16e %d\n", \
+      mag_8.Mean(), mag_8.Error(), mag_8.n);
+  printf("m^10: %.12e %.12e %.4f %.4f\n", \
+      mag_10.Mean(), mag_10.Error(), \
+      mag_10.AutocorrFront(), mag_10.AutocorrBack());
+  fprintf(data_file, "mag^10 %.16e %.16e %d\n", \
+      mag_10.Mean(), mag_10.Error(), mag_10.n);
+  printf("m^12: %.12e %.12e %.4f %.4f\n", \
+      mag_12.Mean(), mag_12.Error(), \
+      mag_12.AutocorrFront(), mag_12.AutocorrBack());
+  fprintf(data_file, "mag^12 %.16e %.16e %d\n", \
+      mag_12.Mean(), mag_12.Error(), mag_12.n);
   printf("anti_2pt: %.12e %.12e %.4f %.4f\n", \
       anti_2pt.Mean(), anti_2pt.Error(), \
       anti_2pt.AutocorrFront(), anti_2pt.AutocorrBack());

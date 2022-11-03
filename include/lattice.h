@@ -174,7 +174,7 @@ void QfeLattice::ReadLattice(FILE* file) {
       }
 
       ResizeSites(n);
-      vol = 0;
+      vol = 0.0;
       for (int s = 0; s < n_sites; s++) {
         ReadSite(file, s);
         vol += sites[s].wt;

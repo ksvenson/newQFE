@@ -516,20 +516,14 @@ void QfeLatticeS2::UpdateWeights() {
       double sq_edge = EdgeSquared(l);
       double sq_edge_1 = EdgeSquared(l1);
       double sq_edge_2 = EdgeSquared(l2);
-      double half_wt = 0.25 * (sq_edge_1 + sq_edge_2 - sq_edge) / FlatArea(f);
+      double half_wt = (sq_edge_1 + sq_edge_2 - sq_edge) / (8.0 * FlatArea(f));
       links[l].wt += half_wt;
 
       // add to the weights of the two sites connected by this link
-      sites[links[l].sites[0]].wt += half_wt * sq_edge;
-      sites[links[l].sites[1]].wt += half_wt * sq_edge;
+      sites[links[l].sites[0]].wt += 0.25 * half_wt * sq_edge;
+      sites[links[l].sites[1]].wt += 0.25 * half_wt * sq_edge;
     }
     link_wt_sum += links[l].wt;
-  }
-  double link_wt_norm = 1.5 * link_wt_sum / double(n_links);
-
-  // normalize link weights
-  for (int l = 0; l < n_links; l++) {
-    links[l].wt /= link_wt_norm;
   }
 
   // normalize site weights to 1

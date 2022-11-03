@@ -1,4 +1,4 @@
-// s3_ct.cc
+// s2xr_free_legendre.cc
 
 #include <getopt.h>
 #include <cassert>
@@ -7,13 +7,13 @@
 #include <string>
 #include <vector>
 #include <Eigen/Sparse>
-#include "s3.h"
+#include "s2.h"
 #include "timer.h"
 
 #define PARALLEL
 
 struct Result {
-  QfeLatticeS3* lattice;
+  QfeLatticeS2* lattice;
   int s;
   double M_inv_x;
   double M3_inv_x;
@@ -54,16 +54,22 @@ int main(int argc, char* argv[]) {
   Timer setup_timer;
 
   // default parameters
+  int n_refine = 8;
+  int n_t = 1;
+  int q = 5;  // icosahedron
   std::string lattice_path = "";
   std::string ct_path = "";
 
   const struct option long_options[] = {
+    { "n_refine", required_argument, 0, 'N' },
+    { "n_t", required_argument, 0, 'T' },
+    { "q", required_argument, 0, 'q' },
     { "lattice_path", required_argument, 0, 'L' },
     { "ct_path", required_argument, 0, 'c' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "L:c:";
+  const char* short_options = "N:T:q:L:c:";
 
   while (true) {
 
@@ -72,31 +78,48 @@ int main(int argc, char* argv[]) {
     if (c == -1) break;
 
     switch (c) {
+      case 'N': n_refine = atoi(optarg); break;
+      case 'T': n_t = atoi(optarg); break;
+      case 'q': q = atoi(optarg); break;
       case 'L': lattice_path = optarg; break;
       case 'c': ct_path = optarg; break;
       default: break;
     }
   }
 
-  QfeLatticeS3 lattice(0);
-  printf("opening lattice file: %s\n", lattice_path.c_str());
-  FILE* lattice_file = fopen(lattice_path.c_str(), "r");
-  assert(lattice_file != nullptr);
-  lattice.ReadLattice(lattice_file);
-  fclose(lattice_file);
-  lattice.vol = double(lattice.n_sites);
+  printf("n_refine: %d\n", n_refine);
+  printf("n_t: %d\n", n_t);
+  printf("q: %d\n", q);
+
+  QfeLatticeS2 lattice(q);
+  if (!lattice_path.empty()) {
+    // read a lattice from file
+    FILE* lattice_file = fopen(lattice_path.c_str(), "r");
+    assert(lattice_file != nullptr);
+    lattice.ReadLattice(lattice_file);
+    fclose(lattice_file);
+  } else {
+    lattice.Refine2D(n_refine);
+    lattice.Inflate();
+    lattice.UpdateWeights();
+  }
+  int n_sites_slice = lattice.n_sites;
+  if (n_t > 1) {
+    lattice.AddDimension(n_t);
+  }
+  lattice.UpdateDistinct();
 
   // calculate local ricci curvature term
   std::vector<double> local_curvature(lattice.n_distinct);
   for (int id = 0; id < lattice.n_distinct; id++) {
-    int s_i = lattice.distinct_first[id];
-    Eigen::Vector4d r_ric = Eigen::Vector4d::Zero();
+    int s_i = lattice.distinct_first[id] % n_sites_slice;
+    Eigen::Vector3d r_ric = Eigen::Vector3d::Zero();
     for (int n = 0; n < lattice.sites[s_i].nn; n++) {
+      int s_j = lattice.sites[s_i].neighbors[n] % n_sites_slice;
       int l = lattice.sites[s_i].links[n];
-      int s_j = lattice.sites[s_i].neighbors[n];
       r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
     }
-    local_curvature[id] = r_ric.norm() / lattice.sites[s_i].wt / 3.0; // a^2 / r^2
+    local_curvature[id] = 0.5 * r_ric.norm() / lattice.sites[s_i].wt;
   }
 
   std::vector<Eigen::Triplet<double>> M_elements;
@@ -113,7 +136,7 @@ int main(int argc, char* argv[]) {
   // add self-interaction terms
   for (int s = 0; s < lattice.n_sites; s++) {
     QfeSite* site = &lattice.sites[s];
-    double wt_sum = 0.75 * local_curvature[site->id] * site->wt;  // 3 a^2 / 4 r^2
+    double wt_sum = 0.25 * local_curvature[site->id] * site->wt;  // a^2 / 4 r^2
     for (int n = 0; n < site->nn; n++) {
       int l = site->links[n];
       wt_sum += lattice.links[l].wt;
@@ -178,6 +201,7 @@ int main(int argc, char* argv[]) {
   std::vector<double> M3_inv(lattice.n_distinct);
   for (int i = 0; i < lattice.n_distinct; i++) {
     int s = lattice.distinct_first[i];
+    double site_wt = lattice.sites[s].wt;
 
     printf("\ndistinct site %i / %d\n", i, lattice.n_distinct);
 
@@ -221,7 +245,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < lattice.n_distinct; i++) {
     int s = lattice.distinct_first[i];
     double site_wt = lattice.sites[s].wt;
-    double log_piece = log(0.75 * local_curvature[i]) / (32.0 * M_PI * M_PI);
+    double log_piece = log(0.25 * local_curvature[i]) / (32.0 * M_PI * M_PI);
 
     double orbit_ct = M_inv[i];
     double orbit_ct3 = M3_inv[i] + log_piece;

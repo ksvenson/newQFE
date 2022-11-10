@@ -13,6 +13,8 @@ class QfePhi4 {
 
 public:
   QfePhi4(QfeLattice* lattice, double msq, double lambda);
+  void WriteField(FILE* file);
+  void ReadField(FILE* file);
   double Action();
   double MeanPhi();
   void HotStart();
@@ -51,6 +53,14 @@ QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
   is_fixed.resize(lattice->sites.size(), false);
   is_clustered.resize(lattice->sites.size());
   sw_root.resize(lattice->sites.size());
+}
+
+void QfePhi4::WriteField(FILE* file) {
+  fwrite(phi.data(), sizeof(double), phi.size(), file);
+}
+
+void QfePhi4::ReadField(FILE* file) {
+  fread(phi.data(), sizeof(double), phi.size(), file);
 }
 
 double QfePhi4::Action() {

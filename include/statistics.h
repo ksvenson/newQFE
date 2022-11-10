@@ -15,8 +15,10 @@ class QfeMeasReal {
 
 public:
   QfeMeasReal();
+  void WriteMeasurement(FILE* file);
+  void ReadMeasurement(FILE* file);
   void Reset();
-  void Measure(double value);
+  void Measure(double value, bool calc_autocorr = true);
   double Mean();
   double Error();
   double AutocorrFront();
@@ -34,6 +36,20 @@ QfeMeasReal::QfeMeasReal() {
   Reset();
 }
 
+void QfeMeasReal::WriteMeasurement(FILE* file) {
+  fprintf(file, "%.16e %.16e %d\n", Mean(), Error(), n);
+}
+
+void QfeMeasReal::ReadMeasurement(FILE* file) {
+  Reset();
+  double mean;
+  double err;
+  fscanf(file, "%lf %lf %d\n", &mean, &err, &n);
+  double count = double(n);
+  sum = mean * count;
+  sum2 = (err * err * count + mean * mean) * count;
+}
+
 void QfeMeasReal::Reset() {
   sum = 0.0;
   sum2 = 0.0;
@@ -43,32 +59,38 @@ void QfeMeasReal::Reset() {
   last_1000.clear();
 }
 
-void QfeMeasReal::Measure(double value) {
+void QfeMeasReal::Measure(double value, bool calc_autocorr) {
   sum += value;
   sum2 += value * value;
   last = value;
   n++;
 
-  if (first_1000.size() < 1000) first_1000.push_back(value);
-  last_1000.push_back(value);
-  if (last_1000.size() > 1000) last_1000.pop_front();
+  if (calc_autocorr) {
+    if (first_1000.size() < 1000) first_1000.push_back(value);
+    last_1000.push_back(value);
+    if (last_1000.size() > 1000) last_1000.pop_front();
+  }
 }
 
 double QfeMeasReal::Mean() {
+  if (n == 0) return 0.0;
   return sum / double(n);
 }
 
 double QfeMeasReal::Error() {
+  if (n == 0) return 0.0;
   double mean = sum / double(n);
   double mean2 = sum2 / double(n);
   return sqrt((mean2 - mean * mean) / double(n));
 }
 
 double QfeMeasReal::AutocorrFront() {
+  if (n == 0) return 0.0;
   return AutocorrTime(first_1000);
 }
 
 double QfeMeasReal::AutocorrBack() {
+  if (n == 0) return 0.0;
   // convert last_1000 to a vector
   std::deque<double>::iterator it = last_1000.begin();
   std::vector<double> a;
@@ -83,7 +105,7 @@ class QfeMeasComplex {
 public:
   QfeMeasComplex();
   void Reset();
-  void Measure(Complex value);
+  void Measure(Complex value, bool calc_autocorr = true);
   Complex Mean();
   Complex Error();
   double AutocorrFront();
@@ -104,9 +126,9 @@ void QfeMeasComplex::Reset() {
   last = 0.0;
 }
 
-void QfeMeasComplex::Measure(Complex value) {
-  real_part.Measure(real(value));
-  imag_part.Measure(imag(value));
+void QfeMeasComplex::Measure(Complex value, bool calc_autocorr) {
+  real_part.Measure(real(value), calc_autocorr);
+  imag_part.Measure(imag(value), calc_autocorr);
   last = value;
 }
 

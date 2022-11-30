@@ -1,12 +1,14 @@
 // phi4_s2xr_crit.cc
 
 #include <getopt.h>
+
 #include <cassert>
 #include <cmath>
 #include <complex>
 #include <cstdio>
 #include <string>
 #include <vector>
+
 #include "phi4.h"
 #include "s2.h"
 #include "statistics.h"
@@ -14,20 +16,20 @@
 
 typedef std::complex<double> Complex;
 
-template<typename ... Args>
-std::string string_format(const char* format, Args ... args ) {
-    int size = std::snprintf(nullptr, 0, format, args ...) + 1;
-    assert(size > 0);
-    char buf[size];
-    sprintf(buf, format, args ...);
-    return std::string(buf);
+template <typename... Args>
+std::string string_format(const char* format, Args... args) {
+  int size = std::snprintf(nullptr, 0, format, args...) + 1;
+  assert(size > 0);
+  char buf[size];
+  sprintf(buf, format, args...);
+  return std::string(buf);
 }
 
-#define FORMAT_DATA_PATH(NAME) string_format("%s/%s/%s_" #NAME "_%08X.dat", \
-  data_dir.c_str(), run_id.c_str(), run_id.c_str(), seed);
+#define FORMAT_DATA_PATH(NAME)                                   \
+  string_format("%s/%s/%s_" #NAME "_%08X.dat", data_dir.c_str(), \
+                run_id.c_str(), run_id.c_str(), seed);
 
 int main(int argc, char* argv[]) {
-
   // default parameters
   int n_refine = 4;
   int n_t = 64;
@@ -46,64 +48,108 @@ int main(int argc, char* argv[]) {
   bool do_overrelax = false;
   bool use_ricci = false;
   double wall_time = 0.0;
-  std::string ct_path = "";  // path to counterterm file
+  std::string ct_path = "";       // path to counterterm file
+  std::string lattice_path = "";  // path to lattice file
   std::string data_dir = "phi4_s2xr_crit";
   bool verbose = false;
 
   const struct option long_options[] = {
-    { "n_refine", required_argument, 0, 'N' },
-    { "n_t", required_argument, 0, 'T' },
-    { "q", required_argument, 0, 'q' },
-    { "seed", required_argument, 0, 'S' },
-    { "cold_start", no_argument, 0, 'C' },
-    { "msq", required_argument, 0, 'm' },
-    { "lambda", required_argument, 0, 'L' },
-    { "l_max", required_argument, 0, 'l' },
-    { "n_therm", required_argument, 0, 'h' },
-    { "n_traj", required_argument, 0, 't' },
-    { "n_skip", required_argument, 0, 's' },
-    { "n_wolff", required_argument, 0, 'w' },
-    { "n_metropolis", required_argument, 0, 'e' },
-    { "metropolis_z", required_argument, 0, 'z' },
-    { "do_overrelax", no_argument, 0, 'o' },
-    { "use_ricci", no_argument, 0, 'R' },
-    { "wall_time", required_argument, 0, 'W' },
-    { "ct_path", required_argument, 0, 'c' },
-    { "data_dir", required_argument, 0, 'd' },
-    { "verbose", no_argument, 0, 'v' },
-    { 0, 0, 0, 0 }
-  };
+      {"n_refine", required_argument, 0, 'N'},
+      {"n_t", required_argument, 0, 'T'},
+      {"q", required_argument, 0, 'q'},
+      {"seed", required_argument, 0, 'S'},
+      {"cold_start", no_argument, 0, 'C'},
+      {"msq", required_argument, 0, 'm'},
+      {"lambda", required_argument, 0, 'L'},
+      {"l_max", required_argument, 0, 'l'},
+      {"n_therm", required_argument, 0, 'h'},
+      {"n_traj", required_argument, 0, 't'},
+      {"n_skip", required_argument, 0, 's'},
+      {"n_wolff", required_argument, 0, 'w'},
+      {"n_metropolis", required_argument, 0, 'e'},
+      {"metropolis_z", required_argument, 0, 'z'},
+      {"do_overrelax", no_argument, 0, 'o'},
+      {"use_ricci", no_argument, 0, 'R'},
+      {"wall_time", required_argument, 0, 'W'},
+      {"ct_path", required_argument, 0, 'c'},
+      {"lattice_path", required_argument, 0, 'P'},
+      {"data_dir", required_argument, 0, 'd'},
+      {"verbose", no_argument, 0, 'v'},
+      {0, 0, 0, 0}};
 
-  const char* short_options = "N:T:q:S:Cm:L:l:h:t:s:w:e:z:oRW:c:d:v";
+  const char* short_options = "N:T:q:S:Cm:L:l:h:t:s:w:e:z:oRW:c:P:d:v";
 
   while (true) {
-
     int o = 0;
     int c = getopt_long(argc, argv, short_options, long_options, &o);
     if (c == -1) break;
 
     switch (c) {
-      case 'N': n_refine = atoi(optarg); break;
-      case 'T': n_t = atoi(optarg); break;
-      case 'q': q = atoi(optarg); break;
-      case 'S': seed = atol(optarg); break;
-      case 'C': cold_start = true; break;
-      case 'm': msq = std::stod(optarg); break;
-      case 'L': lambda = std::stod(optarg); break;
-      case 'l': l_max = atoi(optarg); break;
-      case 'h': n_therm = atoi(optarg); break;
-      case 't': n_traj = atoi(optarg); break;
-      case 's': n_skip = atoi(optarg); break;
-      case 'w': n_wolff = atoi(optarg); break;
-      case 'e': n_metropolis = atoi(optarg); break;
-      case 'z': metropolis_z = std::stod(optarg); break;
-      case 'o': do_overrelax = true; break;
-      case 'R': use_ricci = true; break;
-      case 'W': wall_time = std::stod(optarg); break;
-      case 'c': ct_path = optarg; break;
-      case 'd': data_dir = optarg; break;
-      case 'v': verbose = true; break;
-      default: break;
+      case 'N':
+        n_refine = atoi(optarg);
+        break;
+      case 'T':
+        n_t = atoi(optarg);
+        break;
+      case 'q':
+        q = atoi(optarg);
+        break;
+      case 'S':
+        seed = atol(optarg);
+        break;
+      case 'C':
+        cold_start = true;
+        break;
+      case 'm':
+        msq = std::stod(optarg);
+        break;
+      case 'L':
+        lambda = std::stod(optarg);
+        break;
+      case 'l':
+        l_max = atoi(optarg);
+        break;
+      case 'h':
+        n_therm = atoi(optarg);
+        break;
+      case 't':
+        n_traj = atoi(optarg);
+        break;
+      case 's':
+        n_skip = atoi(optarg);
+        break;
+      case 'w':
+        n_wolff = atoi(optarg);
+        break;
+      case 'e':
+        n_metropolis = atoi(optarg);
+        break;
+      case 'z':
+        metropolis_z = std::stod(optarg);
+        break;
+      case 'o':
+        do_overrelax = true;
+        break;
+      case 'R':
+        use_ricci = true;
+        break;
+      case 'W':
+        wall_time = std::stod(optarg);
+        break;
+      case 'c':
+        ct_path = optarg;
+        break;
+      case 'P':
+        lattice_path = optarg;
+        break;
+      case 'd':
+        data_dir = optarg;
+        break;
+      case 'v':
+        verbose = true;
+        break;
+      default:
+        break;
     }
   }
 
@@ -115,10 +161,10 @@ int main(int argc, char* argv[]) {
   printf("n_skip: %d\n", n_skip);
   printf("n_wolff: %d\n", n_wolff);
   printf("n_metropolis: %d\n", n_metropolis);
-  printf("do_overrelax: %s\n", do_overrelax ? "yes": "no");
-  printf("use_ricci: %s\n", use_ricci ? "yes": "no");
+  printf("do_overrelax: %s\n", do_overrelax ? "yes" : "no");
+  printf("use_ricci: %s\n", use_ricci ? "yes" : "no");
   printf("wall_time: %f\n", wall_time);
-  printf("verbose output: %s\n", verbose ? "yes": "no");
+  printf("verbose output: %s\n", verbose ? "yes" : "no");
 
   // number of spherical harmonics to measure
   int n_ylm = ((l_max + 1) * (l_max + 2)) / 2;
@@ -126,20 +172,28 @@ int main(int argc, char* argv[]) {
   printf("n_ylm: %d\n", n_ylm);
 
   QfeLatticeS2 lattice(q);
+  if (!lattice_path.empty()) {
+    printf("opening lattice file: %s\n", lattice_path.c_str());
+    FILE* lattice_file = fopen(lattice_path.c_str(), "r");
+    assert(lattice_file != nullptr);
+    lattice.ReadLattice(lattice_file);
+    fclose(lattice_file);
+  } else {
+    lattice.Refine2D(n_refine);
+    lattice.Inflate();
+    lattice.UpdateWeights();
+    lattice.UpdateDistinct();
+    printf("n_refine: %d\n", n_refine);
+    printf("q: %d\n", q);
+  }
   lattice.SeedRng(seed);
-  lattice.Refine2D(n_refine);
-  lattice.Inflate();
-  lattice.UpdateWeights();
-  lattice.UpdateDistinct();
   lattice.UpdateAntipodes();
   lattice.UpdateYlm(l_max);
   int n_sites_slice = lattice.n_sites;
   lattice.AddDimension(n_t);
   lattice.vol = double(lattice.n_sites);
 
-  printf("n_refine: %d\n", n_refine);
   printf("n_t: %d\n", n_t);
-  printf("q: %d\n", q);
   printf("total sites: %d\n", lattice.n_sites);
 
   QfePhi4 field(&lattice, msq, lambda);
@@ -187,7 +241,6 @@ int main(int argc, char* argv[]) {
   int t_half = n_t / 2 + 1;
 
   if (use_ricci) {
-
     // calculate local ricci curvature term
     std::vector<double> local_curvature(lattice.n_distinct);
     for (int id = 0; id < lattice.n_distinct; id++) {
@@ -245,13 +298,13 @@ int main(int argc, char* argv[]) {
     ylm_4pt[i_ylm].resize(t_half);
   }
   QfeMeasReal anti_2pt;  // antipodal 2-point function
-  QfeMeasReal mag;  // magnetization
-  QfeMeasReal mag_2;  // magnetization^2
-  QfeMeasReal mag_4;  // magnetization^4
-  QfeMeasReal mag_6;  // magnetization^6
-  QfeMeasReal mag_8;  // magnetization^8
-  QfeMeasReal mag_10;  // magnetization^10
-  QfeMeasReal mag_12;  // magnetization^12
+  QfeMeasReal mag;       // magnetization
+  QfeMeasReal mag_2;     // magnetization^2
+  QfeMeasReal mag_4;     // magnetization^4
+  QfeMeasReal mag_6;     // magnetization^6
+  QfeMeasReal mag_8;     // magnetization^8
+  QfeMeasReal mag_10;    // magnetization^10
+  QfeMeasReal mag_12;    // magnetization^12
   QfeMeasReal action;
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
@@ -263,7 +316,6 @@ int main(int argc, char* argv[]) {
   if (bulk_file != nullptr) {
     printf("reading measurements from file: %s\n", legendre_2pt_path.c_str());
     while (!feof(bulk_file)) {
-
       char meas_name[40];
       fscanf(bulk_file, "%s ", meas_name);
       if (strcmp(meas_name, "action") == 0) {
@@ -360,7 +412,6 @@ int main(int argc, char* argv[]) {
   Timer timer;
 
   for (int n = 0; n < (n_traj + n_therm); n++) {
-
     // terminate if wall time is reached
     if (wall_time > 0.0 && timer.Duration() > wall_time) break;
 
@@ -488,10 +539,8 @@ int main(int argc, char* argv[]) {
     anti_2pt.Measure(anti_2pt_sum / lattice.vol);
     action.Measure(field.Action());
     if (verbose) {
-      printf("%06d %.12f %.4f %.4f\n", \
-          n, action.last, \
-          accept_metropolis.last, \
-          cluster_size.last);
+      printf("%06d %.12f %.4f %.4f\n", n, action.last, accept_metropolis.last,
+             cluster_size.last);
     }
   }
 
@@ -502,8 +551,8 @@ int main(int argc, char* argv[]) {
   printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
   if (do_overrelax) {
     printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
-    printf("overrelax_demon: %.12f %.12f\n", \
-        overrelax_demon.Mean(), overrelax_demon.Error());
+    printf("overrelax_demon: %.12f %.12f\n", overrelax_demon.Mean(),
+           overrelax_demon.Error());
   }
 
   // write rng state to file
@@ -532,60 +581,50 @@ int main(int argc, char* argv[]) {
   bulk_file = fopen(bulk_path.c_str(), "w");
   assert(bulk_file != nullptr);
 
-  printf("action: %+.12e %.12e %.4f %.4f\n", \
-      action.Mean(), action.Error(), \
-      action.AutocorrFront(), action.AutocorrBack());
-  fprintf(bulk_file, "action %.16e %.16e %d\n", \
-      action.Mean(), action.Error(), \
-      action.n);
-  printf("mag: %.12e %.12e %.4f %.4f\n", \
-      m_mean, m_err, mag.AutocorrFront(), mag.AutocorrBack());
-  fprintf(bulk_file, "mag %.16e %.16e %d\n", \
-      m_mean, m_err, mag.n);
-  printf("m^2: %.12e %.12e %.4f %.4f\n", \
-      m2_mean, m2_err, mag_2.AutocorrFront(), mag_2.AutocorrBack());
-  fprintf(bulk_file, "mag^2 %.16e %.16e %d\n", \
-      m2_mean, m2_err, mag_2.n);
-  printf("m^4: %.12e %.12e %.4f %.4f\n", \
-      m4_mean, m4_err, \
-      mag_4.AutocorrFront(), mag_4.AutocorrBack());
-  fprintf(bulk_file, "mag^4 %.16e %.16e %d\n", \
-      m4_mean, m4_err, mag_4.n);
-  printf("m^6: %.12e %.12e %.4f %.4f\n", \
-      mag_6.Mean(), mag_6.Error(), \
-      mag_6.AutocorrFront(), mag_6.AutocorrBack());
-  fprintf(bulk_file, "mag^6 %.16e %.16e %d\n", \
-      mag_6.Mean(), mag_6.Error(), mag_6.n);
-  printf("m^8: %.12e %.12e %.4f %.4f\n", \
-      mag_8.Mean(), mag_8.Error(), \
-      mag_8.AutocorrFront(), mag_8.AutocorrBack());
-  fprintf(bulk_file, "mag^8 %.16e %.16e %d\n", \
-      mag_8.Mean(), mag_8.Error(), mag_8.n);
-  printf("m^10: %.12e %.12e %.4f %.4f\n", \
-      mag_10.Mean(), mag_10.Error(), \
-      mag_10.AutocorrFront(), mag_10.AutocorrBack());
-  fprintf(bulk_file, "mag^10 %.16e %.16e %d\n", \
-      mag_10.Mean(), mag_10.Error(), mag_10.n);
-  printf("m^12: %.12e %.12e %.4f %.4f\n", \
-      mag_12.Mean(), mag_12.Error(), \
-      mag_12.AutocorrFront(), mag_12.AutocorrBack());
-  fprintf(bulk_file, "mag^12 %.16e %.16e %d\n", \
-      mag_12.Mean(), mag_12.Error(), mag_12.n);
-  printf("anti_2pt: %.12e %.12e %.4f %.4f\n", \
-      anti_2pt.Mean(), anti_2pt.Error(), \
-      anti_2pt.AutocorrFront(), anti_2pt.AutocorrBack());
-  fprintf(bulk_file, "anti_2pt %.16e %.16e %d\n", \
-      anti_2pt.Mean(), anti_2pt.Error(), anti_2pt.n);
+  printf("action: %+.12e %.12e %.4f %.4f\n", action.Mean(), action.Error(),
+         action.AutocorrFront(), action.AutocorrBack());
+  fprintf(bulk_file, "action %.16e %.16e %d\n", action.Mean(), action.Error(),
+          action.n);
+  printf("mag: %.12e %.12e %.4f %.4f\n", m_mean, m_err, mag.AutocorrFront(),
+         mag.AutocorrBack());
+  fprintf(bulk_file, "mag %.16e %.16e %d\n", m_mean, m_err, mag.n);
+  printf("m^2: %.12e %.12e %.4f %.4f\n", m2_mean, m2_err, mag_2.AutocorrFront(),
+         mag_2.AutocorrBack());
+  fprintf(bulk_file, "mag^2 %.16e %.16e %d\n", m2_mean, m2_err, mag_2.n);
+  printf("m^4: %.12e %.12e %.4f %.4f\n", m4_mean, m4_err, mag_4.AutocorrFront(),
+         mag_4.AutocorrBack());
+  fprintf(bulk_file, "mag^4 %.16e %.16e %d\n", m4_mean, m4_err, mag_4.n);
+  printf("m^6: %.12e %.12e %.4f %.4f\n", mag_6.Mean(), mag_6.Error(),
+         mag_6.AutocorrFront(), mag_6.AutocorrBack());
+  fprintf(bulk_file, "mag^6 %.16e %.16e %d\n", mag_6.Mean(), mag_6.Error(),
+          mag_6.n);
+  printf("m^8: %.12e %.12e %.4f %.4f\n", mag_8.Mean(), mag_8.Error(),
+         mag_8.AutocorrFront(), mag_8.AutocorrBack());
+  fprintf(bulk_file, "mag^8 %.16e %.16e %d\n", mag_8.Mean(), mag_8.Error(),
+          mag_8.n);
+  printf("m^10: %.12e %.12e %.4f %.4f\n", mag_10.Mean(), mag_10.Error(),
+         mag_10.AutocorrFront(), mag_10.AutocorrBack());
+  fprintf(bulk_file, "mag^10 %.16e %.16e %d\n", mag_10.Mean(), mag_10.Error(),
+          mag_10.n);
+  printf("m^12: %.12e %.12e %.4f %.4f\n", mag_12.Mean(), mag_12.Error(),
+         mag_12.AutocorrFront(), mag_12.AutocorrBack());
+  fprintf(bulk_file, "mag^12 %.16e %.16e %d\n", mag_12.Mean(), mag_12.Error(),
+          mag_12.n);
+  printf("anti_2pt: %.12e %.12e %.4f %.4f\n", anti_2pt.Mean(), anti_2pt.Error(),
+         anti_2pt.AutocorrFront(), anti_2pt.AutocorrBack());
+  fprintf(bulk_file, "anti_2pt %.16e %.16e %d\n", anti_2pt.Mean(),
+          anti_2pt.Error(), anti_2pt.n);
   fclose(bulk_file);
 
   double U4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
-  double U4_err = 0.5 * U4_mean * sqrt(pow(m4_err / m4_mean, 2.0) \
-      + pow(2.0 * m2_err / m2_mean, 2.0));
+  double U4_err =
+      0.5 * U4_mean *
+      sqrt(pow(m4_err / m4_mean, 2.0) + pow(2.0 * m2_err / m2_mean, 2.0));
   printf("U4: %.12e %.12e\n", U4_mean, U4_err);
 
   double m_susc_mean = (m2_mean - m_mean * m_mean) * vol;
-  double m_susc_err = sqrt(pow(m2_err, 2.0) \
-      + pow(2.0 * m_mean * m_err, 2.0)) * vol;
+  double m_susc_err =
+      sqrt(pow(m2_err, 2.0) + pow(2.0 * m_mean * m_err, 2.0)) * vol;
   printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
 
   // print 2-point function legendre coefficients

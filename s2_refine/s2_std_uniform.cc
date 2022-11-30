@@ -96,6 +96,7 @@ Vec3 CalcFirstVertex(OrbitType type, Real dof[]) {
 
 void UpdateOrbit(QfeLatticeS2& lattice, int o) {
   Orbit* this_orbit = &orbits[o];
+  if (this_orbit->n_dof == 0) return;
 
   Vec3 v_first = CalcFirstVertex(this_orbit->type, this_orbit->dof);
   for (int s = 0; s < lattice.n_sites; s++) {

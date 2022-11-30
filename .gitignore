@@ -11,6 +11,9 @@ bin/*
 *.dat
 *.bin
 
+# except group data files
+!grp*.dat
+
 # bash script files
 *.sh
 

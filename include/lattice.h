@@ -2,13 +2,14 @@
 
 #pragma once
 
-#include <cstdio>
 #include <algorithm>
+#include <cstdio>
 #include <map>
 #include <random>
 #include <stack>
 #include <string>
 #include <vector>
+
 #include "rng.h"
 
 #define MAX_SITE_NEIGHBORS 20
@@ -19,27 +20,27 @@
 #define MAX_CELL_SITES 4
 
 struct QfeSite {
-  double wt;  // site weight
-  int nn;  // number of nearest neighbors
-  int links[MAX_SITE_NEIGHBORS];  // nearest neighbor links
+  double wt;                          // site weight
+  int nn;                             // number of nearest neighbors
+  int links[MAX_SITE_NEIGHBORS];      // nearest neighbor links
   int neighbors[MAX_SITE_NEIGHBORS];  // nearest neighbor sites
   int id;
 };
 
 struct QfeLink {
-  double wt;  // link weight
-  int sites[2];  // sites attached by this link
-  int n_faces;  // number of faces that include this link
+  double wt;                  // link weight
+  int sites[2];               // sites attached by this link
+  int n_faces;                // number of faces that include this link
   int faces[MAX_LINK_FACES];  // faces that include this link
 };
 
 struct QfeFace {
-  double wt;  // face weight
-  int n_edges;  // number of links (3 for triangle)
-  int n_cells;  // number of cells that include this face
-  int cells[MAX_FACE_CELLS];  // cells around this face
-  int edges[MAX_FACE_EDGES];  // links around this face
-  int sites[MAX_FACE_EDGES];  // sites around this face
+  double wt;                       // face weight
+  int n_edges;                     // number of links (3 for triangle)
+  int n_cells;                     // number of cells that include this face
+  int cells[MAX_FACE_CELLS];       // cells around this face
+  int edges[MAX_FACE_EDGES];       // links around this face
+  int sites[MAX_FACE_EDGES];       // sites around this face
   bool flip_edge[MAX_FACE_EDGES];  // edges which are flipped wrt this face
 };
 
@@ -51,8 +52,7 @@ struct QfeCell {
 };
 
 class QfeLattice {
-
-public:
+ public:
   QfeLattice();
   virtual void WriteLattice(FILE* file);
   virtual void WriteSite(FILE* file, int s);
@@ -100,7 +100,7 @@ public:
 
   // symmetrically distinct sites
   std::vector<int> distinct_n_sites;  // number of sites for each distinct id
-  std::vector<int> distinct_first;  // representative site for distinct group
+  std::vector<int> distinct_first;    // representative site for distinct group
   int n_distinct;
 
   std::map<std::string, int> link_map;
@@ -153,11 +153,16 @@ void QfeLattice::WriteLattice(FILE* file) {
 }
 
 void QfeLattice::ReadLattice(FILE* file) {
-
-  sites.clear(); n_sites = 0;
-  links.clear(); n_links = 0;
-  faces.clear(); n_faces = 0;
+  sites.clear();
+  n_sites = 0;
+  links.clear();
+  n_links = 0;
+  faces.clear();
+  n_faces = 0;
   vol = 0.0;
+
+  link_map.clear();
+  face_map.clear();
 
   char buffer[200];
   int n;
@@ -259,8 +264,8 @@ void QfeLattice::ReadSite(FILE* file, int s) {
 }
 
 void QfeLattice::WriteLink(FILE* file, int l) {
-  fprintf(file, "%04d %.16e %04d %04d", l, links[l].wt, \
-      links[l].sites[0], links[l].sites[1]);
+  fprintf(file, "%04d %.16e %04d %04d", l, links[l].wt, links[l].sites[0],
+          links[l].sites[1]);
 }
 
 void QfeLattice::ReadLink(FILE* file, int l) {
@@ -275,8 +280,8 @@ void QfeLattice::ReadLink(FILE* file, int l) {
 }
 
 void QfeLattice::WriteFace(FILE* file, int f) {
-  fprintf(file, "%04d %.16e %04d %04d %04d", f, faces[f].wt, \
-    faces[f].sites[0], faces[f].sites[1], faces[f].sites[2]);
+  fprintf(file, "%04d %.16e %04d %04d %04d", f, faces[f].wt, faces[f].sites[0],
+          faces[f].sites[1], faces[f].sites[2]);
 }
 
 void QfeLattice::ReadFace(FILE* file, int f) {
@@ -291,8 +296,9 @@ void QfeLattice::ReadFace(FILE* file, int f) {
 }
 
 void QfeLattice::WriteCell(FILE* file, int c) {
-  fprintf(file, "%04d %.16e %04d %04d %04d %04d", c, cells[c].wt, \
-    cells[c].sites[0], cells[c].sites[1], cells[c].sites[2], cells[c].sites[3]);
+  fprintf(file, "%04d %.16e %04d %04d %04d %04d", c, cells[c].wt,
+          cells[c].sites[0], cells[c].sites[1], cells[c].sites[2],
+          cells[c].sites[3]);
 }
 
 void QfeLattice::ReadCell(FILE* file, int c) {
@@ -312,9 +318,7 @@ void QfeLattice::ReadCell(FILE* file, int c) {
  * @param seed Random number generator seed value
  */
 
-void QfeLattice::SeedRng(unsigned int seed) {
-  rng = QfeRng(seed);
-}
+void QfeLattice::SeedRng(unsigned int seed) { rng = QfeRng(seed); }
 
 /**
  * @brief Create a flat, rectangular lattice with periodic boundary conditions
@@ -325,7 +329,6 @@ void QfeLattice::SeedRng(unsigned int seed) {
  */
 
 void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
-
   // create sites
   ResizeSites(Nx * Ny);
   vol = double(Nx * Ny);
@@ -368,7 +371,6 @@ void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
  */
 
 void QfeLattice::InitTriangle(int N, double skew) {
-
   // if skew = 0.0, all weights are the same (equilateral triangles)
   // if skew = 1.0, the middle link weight is zero (right triangles)
   // average weight is 2/3
@@ -389,7 +391,6 @@ void QfeLattice::InitTriangle(int N, double skew) {
  */
 
 void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
-
   InitTriangle(N, N, wt1, wt2, wt3);
 }
 
@@ -403,8 +404,8 @@ void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
  * the triangular lattice
  */
 
-void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3) {
-
+void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2,
+                              double wt3) {
   // create sites
   ResizeSites(Nx * Ny);
   vol = double(Nx * Ny);
@@ -487,7 +488,6 @@ void QfeLattice::AddDimension(int n_slices) {
   int n_links_slice = links.size();
   for (int t = 1; t < n_slices; t++) {
     for (int l = 0; l < n_links_slice; l++) {
-
       // add links in the other slices
       int s_a = t * n_sites_slice + links[l].sites[0];
       int s_b = t * n_sites_slice + links[l].sites[1];
@@ -542,7 +542,6 @@ int QfeLattice::FindFace(int a, int b, int c) {
  */
 
 int QfeLattice::AddLink(int a, int b, double wt) {
-
   int l = links.size();  // link index
 
   std::vector<int> sorted_sites = {a, b};
@@ -616,7 +615,8 @@ int QfeLattice::AddFace(int a, int b, int c, double wt) {
   std::vector<int> sorted_sites = {a, b, c};
   std::sort(sorted_sites.begin(), sorted_sites.end());
   char face_name[50];
-  sprintf(face_name, "%d_%d_%d", sorted_sites[0], sorted_sites[1], sorted_sites[2]);
+  sprintf(face_name, "%d_%d_%d", sorted_sites[0], sorted_sites[1],
+          sorted_sites[2]);
   assert(face_map.find(face_name) == face_map.end());
   face_map[face_name] = f;
 
@@ -808,7 +808,6 @@ int QfeLattice::AddCell(int a, int b, int c, int d, double wt) {
  */
 
 void QfeLattice::Refine2D(int n_refine) {
-
   if (n_refine < 2) return;
 
   // copy the old links and faces
@@ -843,11 +842,10 @@ void QfeLattice::Refine2D(int n_refine) {
 
   // map from an ordered pair of old sites to an array of new sites running
   // along the old edge between them
-  std::map<std::string,std::vector<int>> edge_sites;
+  std::map<std::string, std::vector<int>> edge_sites;
 
   int s = n_old_sites;
   for (int l = 0; l < old_links.size(); l++) {
-
     // corner sites for this edge
     int s_a = old_links[l].sites[0];
     int s_b = old_links[l].sites[1];
@@ -875,7 +873,6 @@ void QfeLattice::Refine2D(int n_refine) {
 
   // refine interior of old faces
   for (int f = 0; f < old_faces.size(); f++) {
-
     int s_corner[3];
     s_corner[0] = old_faces[f].sites[0];
     s_corner[1] = old_faces[f].sites[1];
@@ -902,7 +899,8 @@ void QfeLattice::Refine2D(int n_refine) {
       int n_inner_loop = (inner_size - 1) * 3;
       if (inner_size == 0) {
         n_inner_loop = 0;
-      } if (inner_size == 1) {
+      }
+      if (inner_size == 1) {
         // single center point
         n_inner_loop = 1;
       }
@@ -912,7 +910,6 @@ void QfeLattice::Refine2D(int n_refine) {
 
       // add faces to connect inner and outer sites
       for (int e = 0; e < 3; e++) {
-
         int ep1 = (e + 1) % 3;  // next edge
         int em1 = (e + 2) % 3;  // previous edge
 
@@ -926,7 +923,6 @@ void QfeLattice::Refine2D(int n_refine) {
         e_inner[e].clear();
 
         for (int i = 0; i < inner_size; i++) {
-
           // connect to the previous inner site
           int sm1 = s;
           if (i == 0) {
@@ -946,7 +942,8 @@ void QfeLattice::Refine2D(int n_refine) {
 
           e_inner[e].push_back(s);
           InterpolateSite(s, s_a, s_b, i + 1, inner_size + 1);
-          sites[s].id = layer_id + (inner_size - 1 - abs(2 * i - (inner_size - 1))) / 2;
+          sites[s].id =
+              layer_id + (inner_size - 1 - abs(2 * i - (inner_size - 1))) / 2;
         }
       }
 
@@ -1036,7 +1033,6 @@ void QfeLattice::PrintCells() {
  */
 
 void QfeLattice::CheckConnectivity() {
-
   printf("\n*** connectivity check ***\n");
   printf("n_sites: %d\n", n_sites);
 
@@ -1076,14 +1072,12 @@ void QfeLattice::CheckConnectivity() {
  */
 
 void QfeLattice::CheckConsistency() {
-
   printf("\n*** consistency check ***\n");
 
   int n_inconsistent = 0;
 
   // make sure each site's neighbor table is consistent with its links
   for (int l = 0; l < links.size(); l++) {
-
     int s_a = links[l].sites[0];
     int s_b = links[l].sites[1];
     int n;
@@ -1098,8 +1092,8 @@ void QfeLattice::CheckConsistency() {
       printf("link %04d not found in neighbor table for site %04d\n", l, s_a);
       n_inconsistent++;
     } else if (sites[s_a].neighbors[n] != s_b) {
-      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
-          s_a, sites[s_a].neighbors[n], l, s_b);
+      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", s_a,
+             sites[s_a].neighbors[n], l, s_b);
       n_inconsistent++;
     }
 
@@ -1113,8 +1107,8 @@ void QfeLattice::CheckConsistency() {
       printf("link %04d not found in neighbor table for site %04d\n", l, s_b);
       n_inconsistent++;
     } else if (sites[s_b].neighbors[n] != s_a) {
-      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", \
-          s_b, sites[s_b].neighbors[n], l, s_a);
+      printf("site %04d neighbor %04d mismatch (link %04d, site %04d)\n", s_b,
+             sites[s_b].neighbors[n], l, s_a);
       n_inconsistent++;
     }
   }

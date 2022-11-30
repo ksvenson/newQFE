@@ -1,4 +1,4 @@
-// s2xr_free_legendre.cc
+// s2_ct.cc
 
 #include <getopt.h>
 #include <cassert>
@@ -54,22 +54,18 @@ int main(int argc, char* argv[]) {
   Timer setup_timer;
 
   // default parameters
-  int n_refine = 8;
-  int n_t = 1;
-  int q = 5;  // icosahedron
+  double m0 = 1.8;
   std::string lattice_path = "";
   std::string ct_path = "";
 
   const struct option long_options[] = {
-    { "n_refine", required_argument, 0, 'N' },
-    { "n_t", required_argument, 0, 'T' },
-    { "q", required_argument, 0, 'q' },
+    { "m0", required_argument, 0, 'm' },
     { "lattice_path", required_argument, 0, 'L' },
     { "ct_path", required_argument, 0, 'c' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "N:T:q:L:c:";
+  const char* short_options = "m:L:c:";
 
   while (true) {
 
@@ -78,44 +74,31 @@ int main(int argc, char* argv[]) {
     if (c == -1) break;
 
     switch (c) {
-      case 'N': n_refine = atoi(optarg); break;
-      case 'T': n_t = atoi(optarg); break;
-      case 'q': q = atoi(optarg); break;
+      case 'm': m0 = std::stod(optarg); break;
       case 'L': lattice_path = optarg; break;
       case 'c': ct_path = optarg; break;
       default: break;
     }
   }
 
-  printf("n_refine: %d\n", n_refine);
-  printf("n_t: %d\n", n_t);
-  printf("q: %d\n", q);
+  printf("m0: %.4f\n", m0);
 
-  QfeLatticeS2 lattice(q);
-  if (!lattice_path.empty()) {
-    // read a lattice from file
-    FILE* lattice_file = fopen(lattice_path.c_str(), "r");
-    assert(lattice_file != nullptr);
-    lattice.ReadLattice(lattice_file);
-    fclose(lattice_file);
-  } else {
-    lattice.Refine2D(n_refine);
-    lattice.Inflate();
-    lattice.UpdateWeights();
-  }
-  int n_sites_slice = lattice.n_sites;
-  if (n_t > 1) {
-    lattice.AddDimension(n_t);
-  }
+  // read a lattice from file
+  QfeLatticeS2 lattice(0);
+  FILE* lattice_file = fopen(lattice_path.c_str(), "r");
+  assert(lattice_file != nullptr);
+  lattice.ReadLattice(lattice_file);
+  fclose(lattice_file);
   lattice.UpdateDistinct();
+  lattice.vol = double(lattice.n_sites);
 
   // calculate local ricci curvature term
   std::vector<double> local_curvature(lattice.n_distinct);
   for (int id = 0; id < lattice.n_distinct; id++) {
-    int s_i = lattice.distinct_first[id] % n_sites_slice;
+    int s_i = lattice.distinct_first[id];
     Eigen::Vector3d r_ric = Eigen::Vector3d::Zero();
     for (int n = 0; n < lattice.sites[s_i].nn; n++) {
-      int s_j = lattice.sites[s_i].neighbors[n] % n_sites_slice;
+      int s_j = lattice.sites[s_i].neighbors[n];
       int l = lattice.sites[s_i].links[n];
       r_ric += lattice.links[l].wt * (lattice.r[s_i] - lattice.r[s_j]);
     }
@@ -136,7 +119,7 @@ int main(int argc, char* argv[]) {
   // add self-interaction terms
   for (int s = 0; s < lattice.n_sites; s++) {
     QfeSite* site = &lattice.sites[s];
-    double wt_sum = 0.25 * local_curvature[site->id] * site->wt;  // a^2 / 4 r^2
+    double wt_sum = 0.25 * local_curvature[site->id] * site->wt;
     for (int n = 0; n < site->nn; n++) {
       int l = site->links[n];
       wt_sum += lattice.links[l].wt;
@@ -245,26 +228,31 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < lattice.n_distinct; i++) {
     int s = lattice.distinct_first[i];
     double site_wt = lattice.sites[s].wt;
-    double log_piece = log(0.25 * local_curvature[i]) / (32.0 * M_PI * M_PI);
 
     double orbit_ct = M_inv[i];
-    double orbit_ct3 = M3_inv[i] + log_piece;
+    double orbit_ct3 = M3_inv[i];
     double orbit_vol = double(lattice.distinct_n_sites[i]);
 
     curvature_sum += local_curvature[i] * orbit_vol * site_wt;
     ct_sum += orbit_ct * orbit_vol * site_wt;
     ct3_sum += orbit_ct3 * orbit_vol * site_wt;
-
-    printf("%d %04d %.18f %.18e %.18e %d\n", i, s, site_wt, \
-        orbit_ct, orbit_ct3, lattice.distinct_n_sites[i]);
-    fprintf(ct_file, "%+.18e %+.18e\n", orbit_ct, orbit_ct3);
   }
-  fclose(ct_file);
 
   double curvature_mean = curvature_sum / lattice.vol;
   double a_r_mean = sqrt(curvature_mean);
   double ct_mean = ct_sum / lattice.vol;
   double ct3_mean = ct3_sum / lattice.vol;
+
+  for (int i = 0; i < lattice.n_distinct; i++) {
+    int s = lattice.distinct_first[i];
+    double site_wt = lattice.sites[s].wt;
+
+    printf("%d %04d %.20f %.20e %.20e %d\n", i, s, site_wt, \
+        M_inv[i] - ct_mean, M3_inv[i] - ct3_mean, lattice.distinct_n_sites[i]);
+    fprintf(ct_file, "%+.20e %+.20e\n", M_inv[i] - ct_mean, M3_inv[i] - ct3_mean);
+  }
+  fclose(ct_file);
+
   printf("curvature_mean: %.12e\n", curvature_mean);
   printf("a_r_mean: %.12e\n", a_r_mean);
   printf("ct_mean: %.12e\n", ct_mean);

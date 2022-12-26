@@ -2,16 +2,16 @@
 
 #pragma once
 
+#include <Eigen/Sparse>
 #include <cassert>
 #include <cmath>
 #include <stack>
 #include <vector>
-#include <Eigen/Sparse>
+
 #include "lattice.h"
 
 class QfePhi4 {
-
-public:
+ public:
   QfePhi4(QfeLattice* lattice, double msq, double lambda);
   void WriteField(FILE* file);
   void ReadField(FILE* file);
@@ -21,25 +21,26 @@ public:
   void ColdStart();
   double Metropolis();
   double Overrelax();
-  int WolffUpdate();
+  int WolffUpdate(bool storeCluster = true);
   int SWUpdate();
   int FindSWRoot(int s);
   std::vector<double> MInverse(double m0);
 
   QfeLattice* lattice;
-  std::vector<double> phi;  // scalar field
-  std::vector<double> msq_ct;  // local mass counter terms
+  std::vector<double> phi;      // scalar field
+  std::vector<double> msq_ct;   // local mass counter terms
   std::vector<double> moments;  // magnetic moments
-  double lambda;  // bare coupling
-  double msq;  // bare mass squared
+  double lambda;                // bare coupling
+  double msq;                   // bare mass squared
 
   double metropolis_z;
   double overrelax_demon;
   std::vector<bool> is_clustered;  // keeps track of which sites are clustered
-  std::vector<bool> is_fixed;  // dirichlet boundary sites fixed to zero
+  std::vector<bool> is_fixed;      // dirichlet boundary sites fixed to zero
   std::vector<int> wolff_cluster;  // array of clustered sites
-  std::vector<int> sw_root;  // root for each site
-  std::vector<std::vector<int>> sw_clusters;  // array of sites in each sw cluster
+  std::vector<int> sw_root;        // root for each site
+  // std::vector<std::vector<int>> sw_clusters;  // array of sites in each sw
+  // cluster
 };
 
 QfePhi4::QfePhi4(QfeLattice* lattice, double msq, double lambda) {
@@ -207,11 +208,11 @@ double QfePhi4::Overrelax() {
 // wolff cluster update algorithm
 // ref: U. Wolff, Phys. Rev. Lett. 62, 361 (1989).
 
-int QfePhi4::WolffUpdate() {
-
+int QfePhi4::WolffUpdate(bool storeCluster) {
   // remove all sites from the cluster
   std::fill(is_clustered.begin(), is_clustered.end(), false);
   wolff_cluster.clear();
+  int cluster_size = 0;
 
   // create the stack
   std::stack<int> stack;
@@ -221,7 +222,8 @@ int QfePhi4::WolffUpdate() {
   do {
     s = lattice->rng.RandInt(0, lattice->n_sites - 1);
   } while (is_fixed[s]);
-  wolff_cluster.push_back(s);
+  cluster_size++;
+  if (storeCluster) wolff_cluster.push_back(s);
   is_clustered[s] = true;
   stack.push(s);
 
@@ -251,20 +253,20 @@ int QfePhi4::WolffUpdate() {
       if (rate > 0.0 || lattice->rng.RandReal() < exp(rate)) continue;
 
       // add the site to the cluster
-      wolff_cluster.push_back(s);
+      cluster_size++;
+      if (storeCluster) wolff_cluster.push_back(s);
       is_clustered[s] = true;
       stack.push(s);
     }
   }
 
-  return wolff_cluster.size();
+  return cluster_size;
 }
 
 // swendsen-wang update algorithm
 // ref: R.H. Swendsen and J.S. Wang, Phys. Rev. Lett. 58, 86 (1987)
 
 int QfePhi4::SWUpdate() {
-
   // each site begins in its own cluster
   std::iota(std::begin(sw_root), std::end(sw_root), 0);
 
@@ -290,7 +292,7 @@ int QfePhi4::SWUpdate() {
 
   std::map<int, int> sw_map;
   std::vector<bool> is_flipped;
-  sw_clusters.clear();
+  // sw_clusters.clear();
   int n_clusters = 0;
   for (int s = 0; s < lattice->n_sites; s++) {
     // find the root node for this site
@@ -298,13 +300,13 @@ int QfePhi4::SWUpdate() {
 
     if (sw_map.find(r) == sw_map.end()) {
       sw_map[r] = n_clusters;
-      is_flipped.push_back(lattice->rng.RandReal() > 0.5);
-      sw_clusters.push_back(std::vector<int>());
+      is_flipped.push_back(lattice->rng.RandBool());
+      // sw_clusters.push_back(std::vector<int>());
       n_clusters++;
     }
 
     int c = sw_map[r];
-    sw_clusters[c].push_back(s);
+    // sw_clusters[c].push_back(s);
 
     // flip half the clusters
     if (is_flipped[c]) phi[s] = -phi[s];
@@ -314,7 +316,6 @@ int QfePhi4::SWUpdate() {
 }
 
 int QfePhi4::FindSWRoot(int s) {
-
   int root = sw_root[s];
 
   // find the root
@@ -364,11 +365,9 @@ std::vector<double> QfePhi4::MInverse(double m0) {
   std::map<int, double> ct_map;
   std::vector<double> M_inv(lattice->n_sites);
   for (int s = 0; s < lattice->n_sites; s++) {
-
     // assume sites with the same weight have the same M_inv
     int wt_int = int(round(lattice->sites[s].wt * 1.0e10));
     if (ct_map.find(wt_int) == ct_map.end()) {
-
       // create a source and solve via conjugate gradient
       Eigen::VectorXd b = Eigen::VectorXd::Zero(lattice->n_sites);
       b(s) = 1.0;

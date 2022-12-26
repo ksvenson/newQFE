@@ -717,7 +717,7 @@ int QfeLattice::AddFace(int a, int b, int c, int d, double wt) {
   l = FindLink(c, d);
   face.flip_edge[1] = false;
   if (l == -1) {
-    l = AddLink(c, a, 1.0);
+    l = AddLink(c, d, 1.0);
   } else if (links[l].sites[1] == d) {
     face.flip_edge[1] = true;
   }

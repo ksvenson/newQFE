@@ -66,7 +66,6 @@ class QfeLattice {
   virtual void ReadCell(FILE* file, int c);
   void SeedRng(unsigned int seed);
   void InitRect(int Nx, int Ny, double wt_x, double wt_y);
-  void InitTriangle(int N, double skew = 0.0);
   void InitTriangle(int N, double wt1, double wt2, double wt3);
   void InitTriangle(int Nx, int Ny, double wt1, double wt2, double wt3);
   virtual void ResizeSites(int n_sites);
@@ -357,28 +356,6 @@ void QfeLattice::InitRect(int Nx, int Ny, double wt1, double wt2) {
     links[faces[f].edges[2]].wt = wt1;
     links[faces[f].edges[3]].wt = wt2;
   }
-}
-
-/**
- * @brief Creates a flat triangulated lattice with periodic boundary
- * conditions.
- *
- * @param N Lattice size
- * @param skew A value from 0 and 1 which determines how skewed the triangles
- * are. a value of 0 corresponds to equilateral triangles, and a value of 1
- * corresponds to right triangles, which is equivalent to a square lattice
- * because the diagonal link weights will be zero.
- */
-
-void QfeLattice::InitTriangle(int N, double skew) {
-  // if skew = 0.0, all weights are the same (equilateral triangles)
-  // if skew = 1.0, the middle link weight is zero (right triangles)
-  // average weight is 2/3
-  double wt1 = (2.0 + skew) / 3.0;
-  double wt2 = (2.0 - 2.0 * skew) / 3.0;
-  double wt3 = wt1;
-
-  InitTriangle(N, wt1, wt2, wt3);
 }
 
 /**

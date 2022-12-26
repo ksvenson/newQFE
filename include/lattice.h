@@ -398,8 +398,8 @@ void QfeLattice::InitTriangle(int N, double wt1, double wt2, double wt3) {
  * @brief Creates a flat triangulated lattice with periodic boundary
  * conditions. Lattice dimensions can be asymmetrical.
  *
- * @param N Lattice size (x or short direction)
- * @param Nt Lattice size (y or long direction)
+ * @param Nx Lattice size (x or short direction)
+ * @param Ny Lattice size (y or long direction)
  * @param wtx The weights given to links in the 3 directions of
  * the triangular lattice
  */
@@ -431,8 +431,11 @@ void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2,
     int xm1 = (x - 1 + Nx) % Nx;
 
     // add "right-handed" faces
-    AddFace(s, xp1 + y * Nx, x + yp1 * Nx);
+    int f = AddFace(s, xp1 + y * Nx, x + yp1 * Nx);
     AddFace(s, x + yp1 * Nx, xm1 + yp1 * Nx);
+    links[faces[f].edges[2]].wt = wt1;
+    links[faces[f].edges[0]].wt = wt2;
+    links[faces[f].edges[1]].wt = wt3;
   }
 }
 

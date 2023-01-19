@@ -71,8 +71,9 @@ class QfeLattice {
   virtual void ResizeSites(int n_sites);
   virtual void InterpolateSite(int s, int s_a, int s_b, int num, int den);
   virtual void AddDimension(int n_slices);
-  int FindLink(int a, int b);
-  int FindFace(int a, int b, int c);
+  int FindLink(int s1, int s2);
+  int FindFace(int s1, int s2, int s3);
+  int FindCell(int s1, int s2, int s3, int s4);
   int AddLink(int a, int b, double wt);
   int AddFace(int a, int b, int c, double wt = 1.0);
   int AddFace(int a, int b, int c, int d, double wt = 1.0);
@@ -101,9 +102,6 @@ class QfeLattice {
   std::vector<int> distinct_n_sites;  // number of sites for each distinct id
   std::vector<int> distinct_first;    // representative site for distinct group
   int n_distinct;
-
-  std::map<std::string, int> link_map;
-  std::map<std::string, int> face_map;
 
   QfeRng rng;
 };
@@ -159,9 +157,6 @@ void QfeLattice::ReadLattice(FILE* file) {
   faces.clear();
   n_faces = 0;
   vol = 0.0;
-
-  link_map.clear();
-  face_map.clear();
 
   char buffer[200];
   int n;
@@ -482,38 +477,48 @@ void QfeLattice::AddDimension(int n_slices) {
 }
 
 /**
- * @brief Finds the link connecting sites @p a and @p b and returns the link
+ * @brief Finds the link connecting sites @p s1 and @p s2 and returns the link
  * index. Returns -1 if no link exists.
  */
 
-int QfeLattice::FindLink(int a, int b) {
-  // sort a,b to make comparison easier
-  std::vector<int> find_sites = {a, b};
-  std::sort(find_sites.begin(), find_sites.end());
-  char link_name[50];
-  sprintf(link_name, "%d_%d", find_sites[0], find_sites[1]);
-  if (link_map.find(link_name) == link_map.end()) {
-    return -1;
+int QfeLattice::FindLink(int s1, int s2) {
+  for (int n = 0; n < sites[s1].nn; n++) {
+    if (sites[s1].neighbors[n] == s2) return sites[s1].links[n];
   }
-  return link_map[link_name];
+  return -1;
 }
 
 /**
- * @brief Finds the face connecting sites @p a, @p b, and @p c and returns
+ * @brief Finds the face connecting sites @p s1, @p s2, and @p s3 and returns
  * the face index. Returns -1 if no face exists.
  */
 
-int QfeLattice::FindFace(int a, int b, int c) {
-  // sort a,b,c to make comparison easier
-  std::vector<int> find_sites = {a, b, c};
-  std::sort(find_sites.begin(), find_sites.end());
-  char face_name[50];
-  sprintf(face_name, "%d_%d_%d", find_sites[0], find_sites[1], find_sites[2]);
+int QfeLattice::FindFace(int s1, int s2, int s3) {
+  int l = FindLink(s1, s2);
+  if (l == -1) return -1;
 
-  if (face_map.find(face_name) == face_map.end()) {
-    return -1;
+  for (int n = 0; n < links[l].n_faces; n++) {
+    int f = links[l].faces[n];
+    if (faces[f].n_edges != 3) continue;
+    for (int e = 0; e < 3; e++) {
+      if (faces[f].sites[e] == s3) return f;
+    }
   }
-  return face_map[face_name];
+  return -1;
+}
+
+int QfeLattice::FindCell(int s1, int s2, int s3, int s4) {
+  int f = FindFace(s1, s2, s3);
+  if (f == -1) return -1;
+
+  for (int n = 0; n < faces[f].n_cells; n++) {
+    int c = faces[f].cells[n];
+    if (cells[c].n_faces != 4) continue;
+    for (int i = 0; i < 4; i++) {
+      if (cells[c].sites[i] == s4) return c;
+    }
+  }
+  return -1;
 }
 
 /**
@@ -523,13 +528,6 @@ int QfeLattice::FindFace(int a, int b, int c) {
 
 int QfeLattice::AddLink(int a, int b, double wt) {
   int l = links.size();  // link index
-
-  std::vector<int> sorted_sites = {a, b};
-  std::sort(sorted_sites.begin(), sorted_sites.end());
-  char link_name[50];
-  sprintf(link_name, "%d_%d", sorted_sites[0], sorted_sites[1]);
-  assert(link_map.find(link_name) == link_map.end());
-  link_map[link_name] = l;
 
   QfeLink link;
   link.wt = wt;
@@ -591,14 +589,6 @@ void QfeLattice::UpdateDistinct() {
 
 int QfeLattice::AddFace(int a, int b, int c, double wt) {
   int f = faces.size();  // face index
-
-  std::vector<int> sorted_sites = {a, b, c};
-  std::sort(sorted_sites.begin(), sorted_sites.end());
-  char face_name[50];
-  sprintf(face_name, "%d_%d_%d", sorted_sites[0], sorted_sites[1],
-          sorted_sites[2]);
-  assert(face_map.find(face_name) == face_map.end());
-  face_map[face_name] = f;
 
   QfeFace face;
   face.wt = wt;

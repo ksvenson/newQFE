@@ -1,14 +1,10 @@
 
-all: tests ads
+all: gen_grp
 
-.PHONY: clean tests ads
+.phony: all clean gen_grp
 
 clean:
-	$(MAKE) -C tests clean
-	$(MAKE) -C ads_heatbath clean
+	$(MAKE) -C grp clean
 
-examples:
-	$(MAKE) -C tests
-
-ads:
-	$(MAKE) -C ads_heatbath
+gen_grp:
+	$(MAKE) -C grp

@@ -1,127 +1,79 @@
 // s3_test.cc
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <vector>
 #include "s3.h"
-#include "ising.h"
-#include "statistics.h"
+
+#include <cstdio>
 
 int main(int argc, char* argv[]) {
+  // list of refinement values to test
+  int k_list[] = {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20, 24, 28, 32};
+  int n_k = sizeof(k_list) / sizeof(int);
 
-  int q = 5;
-  printf("q: %d\n", q);
+  for (int q = 3; q <= 5; q++) {
+    for (int i_k = 0; i_k < n_k; i_k++) {
+      int k = k_list[i_k];
+      printf("Testing q%dk%d lattice\n", q, k);
+      QfeLatticeS3 lattice(q, k);
 
-  double beta = 0.1;
-  printf("beta: %.4f\n", beta);
+      // check Euler characteristic
+      int euler_chi =
+          lattice.n_sites - lattice.n_links + lattice.n_faces - lattice.n_cells;
+      // printf("euler characteristic: %d\n", euler_chi);
+      assert(euler_chi == 0);
 
-  QfeLatticeS3 lattice(0);
-  char lattice_path[50];
-  sprintf(lattice_path, "s3_%d.dat", q);
-  FILE* file = fopen(lattice_path, "r");
-  assert(file != nullptr);
-  lattice.ReadLattice(file);
-  fclose(file);
-  lattice.vol = double(lattice.n_sites);
+      // check antipodal points
+      if (q != 3) lattice.UpdateAntipodes();
 
-  // for (int c = 0; c < lattice.n_cells; c++) {
-  //   Eigen::Vector4d cr = lattice.CellCircumcenter(c);
-  //   Eigen::Vector4d r_a = lattice.r[lattice.cells[c].sites[0]];
-  //   printf("%04d %.16f\n", c, (cr - r_a).norm());
-  // }
-  //
-  // for (int f = 0; f < lattice.n_faces; f++) {
-  //   Eigen::Vector4d cr = lattice.FaceCircumcenter(f);
-  //   Eigen::Vector4d r_a = lattice.r[lattice.faces[f].sites[0]];
-  //   printf("%04d %.16f\n", f, (cr - r_a).norm());
-  // }
-  //
-  // for (int l = 0; l < lattice.n_links; l++) {
-  //   Eigen::Vector4d cr = lattice.EdgeCenter(l);
-  //   Eigen::Vector4d r_a = lattice.r[lattice.links[l].sites[0]];
-  //   printf("%04d %.16f\n", l, (cr - r_a).norm());
-  // }
+      // calculate DEC weights
+      lattice.CalcFEMWeights();
 
-  // lattice.Inflate();
-  // lattice.UpdateAntipodes();
-  // exit(0);
+      // check that low ell irreps of O(4) can be integrated exactly
+      double error_tol = 1.0e-9;
+      int j_max;
+      if (q == 3) {
+        j_max = 2;
+      } else if (q == 4) {
+        j_max = 3;
+      } else {
+        j_max = 5;
+      }
+      for (int j = 0; j <= j_max; j++) {
+        for (int l = 0; l <= j; l++) {
+          for (int m = -l; m <= l; m++) {
+            Complex yjlm_sum = 0.0;
+            for (int s = 0; s < lattice.n_sites; s++) {
+              yjlm_sum += lattice.sites[s].wt * lattice.GetYjlm(s, j, l, m);
+            }
+            Complex yjlm_mean =
+                yjlm_sum * sqrt(2.0 * M_PI * M_PI) / lattice.vol;
+            // printf("j,l,m=%d,%d,%+d: %+.12e %+.12e\n", j, l, m,
+            // real(yjlm_mean),
+            //        imag(yjlm_mean));
 
-  QfeIsing field(&lattice, beta);
-  field.HotStart();
+            // j=0 should integrate to exactly 1, others should integrate to 0
+            if (j == 0) yjlm_mean -= 1.0;
+            assert(std::abs(yjlm_mean) < error_tol);
+          }
+        }
+      }
 
-  printf("initial action: %.12f\n", field.Action());
+      // write the orbits to a data file
+      FILE* temp_file = fopen("temp.dat", "w");
+      lattice.WriteOrbits(temp_file);
+      fclose(temp_file);
 
-  // measurements
-  QfeMeasReal mag;
-  QfeMeasReal mag_2;
-  QfeMeasReal mag_4;
-  QfeMeasReal action;
-  QfeMeasReal cluster_size;
-  QfeMeasReal accept_metropolis;
+      // create a new lattice and read the orbit data
+      temp_file = fopen("temp.dat", "r");
+      QfeLatticeS3 check_lattice(q, k);
+      check_lattice.ReadOrbits(temp_file);
+      fclose(temp_file);
+      remove("temp.dat");
 
-  int n_therm = 1000;
-  int n_traj = 20000;
-  int n_skip = 2;
-  int n_wolff = 3;
-  int n_metropolis = 5;
-  for (int n = 0; n < (n_traj + n_therm); n++) {
-
-    int cluster_size_sum = 0;
-    for (int j = 0; j < n_wolff; j++) {
-      cluster_size_sum += field.WolffUpdate();
+      // check that the site positions match
+      for (int s = 0; s < lattice.n_sites; s++) {
+        assert(AlmostEq(lattice.r[s], check_lattice.r[s]));
+      }
     }
-    double metropolis_sum = 0.0;
-    for (int j = 0; j < n_metropolis; j++) {
-      metropolis_sum += field.Metropolis();
-    }
-    cluster_size.Measure(double(cluster_size_sum) / lattice.vol);
-    accept_metropolis.Measure(metropolis_sum);
-
-    if (n % n_skip || n < n_therm) continue;
-
-    action.Measure(field.Action());
-    double m = fabs(field.MeanSpin());
-    double m2 = m * m;
-    mag.Measure(m);
-    mag_2.Measure(m2);
-    mag_4.Measure(m2 * m2);
-    printf("%06d %.12f %+.12f %.4f %.4f\n", \
-        n, action.last, mag.last, \
-        accept_metropolis.last, \
-        cluster_size.last);
   }
-
-  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
-  printf("cluster_size/V: %.4f\n", cluster_size.Mean());
-
-  double m_mean = mag.Mean();
-  double m_err = mag.Error();
-  double m2_mean = mag_2.Mean();
-  double m2_err = mag_2.Error();
-  double m4_mean = mag_4.Mean();
-  double m4_err = mag_4.Error();
-
-  printf("action: %+.12e %.12e %.4f %.4f\n", \
-      action.Mean(), action.Error(), \
-      action.AutocorrFront(), action.AutocorrBack());
-  printf("mag: %.12e %.12e %.4f %.4f\n", \
-      m_mean, m_err, mag.AutocorrFront(), mag.AutocorrBack());
-  printf("m^2: %.12e %.12e %.4f %.4f\n", \
-      m2_mean, m2_err, mag_2.AutocorrFront(), mag_2.AutocorrBack());
-  printf("m^4: %.12e %.12e %.4f %.4f\n", \
-      m4_mean, m4_err, \
-      mag_4.AutocorrFront(), mag_4.AutocorrBack());
-
-  double U4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
-  double U4_err = 0.5 * U4_mean * sqrt(pow(m4_err / m4_mean, 2.0) \
-      + pow(2.0 * m2_err / m2_mean, 2.0));
-  printf("U4: %.12e %.12e\n", U4_mean, U4_err);
-
-  double m_susc_mean = (m2_mean - m_mean * m_mean) * lattice.vol;
-  double m_susc_err = sqrt(pow(m2_err, 2.0) \
-      + pow(2.0 * m_mean * m_err, 2.0)) * lattice.vol;
-  printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
-
   return 0;
 }

@@ -1,4 +1,4 @@
-// s3_lap_eigen.cc
+// s2_lap_eigen.cc
 
 #include <Spectra/MatOp/SparseSymMatProd.h>
 #include <Spectra/SymEigsSolver.h>
@@ -9,21 +9,22 @@
 #include <cstdio>
 #include <string>
 
-#include "s3.h"
+#include "s2.h"
 #include "timer.h"
 
 // calculate the eigenvalues of the Laplacian in the diagonal basis
 
 int main(int argc, char* argv[]) {
   int q = 5;
-  int k = 2;
+  int k = 1;
   std::string orbit_path = "";
 
   if (argc > 1) q = atoi(argv[1]);
   if (argc > 2) k = atoi(argv[2]);
   if (argc > 3) orbit_path = argv[3];
 
-  QfeLatticeS3 lattice(q, k);
+  QfeLatticeS2 lattice(q, k);
+
   if (!orbit_path.empty()) {
     FILE* orbit_file = fopen(orbit_path.c_str(), "r");
     assert(orbit_file != nullptr);
@@ -31,7 +32,7 @@ int main(int argc, char* argv[]) {
     fclose(orbit_file);
   }
 
-  lattice.CalcFEMWeights();
+  lattice.UpdateWeights();
   double a_lat = lattice.CalcLatticeSpacing();
 
   std::vector<Eigen::Triplet<double>> M_elements;
@@ -76,11 +77,11 @@ int main(int argc, char* argv[]) {
   // Construct matrix operation object using the wrapper class DenseSymMatProd
   Spectra::SparseSymMatProd<double> op(M);
 
-  // Construct eigen solver object, requesting the smallest 819 eigenvalues (up
-  // to j=12) total number of eigenvalues up to j is (x + 1)(x + 2)(2x + 3) / 6
-  int ncv = 850 * 2;  // was 819
+  // Construct eigen solver object, requesting the smallest 169 eigenvalues (up
+  // to l=12) total number of eigenvalues up to l is (l + 1)^2
+  int ncv = 180 * 2;
   if (lattice.n_sites < ncv) ncv = lattice.n_sites;
-  int nev = 850;
+  int nev = 180;
   if (nev > (ncv - 2)) nev = ncv - 2;
   printf("nev: %d\n", nev);
   printf("ncv: %d\n", ncv);

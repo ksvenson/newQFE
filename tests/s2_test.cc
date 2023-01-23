@@ -1,115 +1,77 @@
 // s2_test.cc
 
-#include <cstdio>
-#include <vector>
-#include "phi4.h"
 #include "s2.h"
-#include "statistics.h"
+
+#include <cstdio>
 
 int main(int argc, char* argv[]) {
+  // list of refinement values to test
+  int k_list[] = {1,  2,  3,  4,  5,  6,  7,  8,   10,  12,  16,  20,  24,
+                  28, 32, 40, 48, 56, 64, 96, 128, 144, 192, 256, 384, 512};
+  int n_k = sizeof(k_list) / sizeof(int);
 
-  double msq = -1.8163 * 2;
-  printf("msq: %.4f\n", msq);
+  for (int q = 3; q <= 5; q++) {
+    for (int i_k = 0; i_k < n_k; i_k++) {
+      int k = k_list[i_k];
+      printf("Testing q%dk%d lattice\n", q, k);
+      QfeLatticeS2 lattice(q, k);
 
-  double lambda = 1.0;
-  printf("lambda: %.4f\n", lambda);
+      // check Euler characteristic
+      int euler_chi = lattice.n_sites - lattice.n_links + lattice.n_faces;
+      // printf("euler characteristic: %d\n", euler_chi);
+      assert(euler_chi == 2);
 
-  QfeLatticeS2 lattice;
-  lattice.Refine2D(16);
-  lattice.Inflate();
-  lattice.UpdateWeights();
-  lattice.CheckConnectivity();
-  lattice.CheckConsistency();
+      // check that each site has the proper number of neighbors
+      for (int s = 0; s < lattice.n_sites; s++) {
+        if (lattice.site_orbit[s] == 0) {
+          assert(lattice.sites[s].nn == q);
+        } else {
+          assert(lattice.sites[s].nn == 6);
+        }
+      }
 
-  double site_wt_sum = 0.0;
-  double site_wt_sq = 0.0;
-  for (int s = 0; s < lattice.n_sites; s++) {
-    site_wt_sum += lattice.sites[s].wt;
-    site_wt_sq += lattice.sites[s].wt * lattice.sites[s].wt;
-  }
-  printf("site_wt_sum: %.12f\n", site_wt_sum);
-  printf("site_wt_sq: %.12f\n", site_wt_sq);
+      // check antipodal points
+      if (q != 3) lattice.UpdateAntipodes();
 
-  double link_wt_sum = 0.0;
-  double link_wt_sq = 0.0;
-  for (int l = 0; l < lattice.n_links; l++) {
-    link_wt_sum += lattice.links[l].wt;
-    link_wt_sq += lattice.links[l].wt * lattice.links[l].wt;
-  }
-  printf("link_wt_sum: %.12f\n", link_wt_sum);
-  printf("link_wt_sq: %.12f\n", link_wt_sq);
+      // calculate DEC weights
+      lattice.UpdateWeights();
 
-  QfeMeasReal face_area;
-  for (int f = 0; f < lattice.n_faces; f++) {
-    face_area.Measure(lattice.FlatArea(f));
-  }
-  printf("face_area: %.12f (%.12f)\n", face_area.Mean(), face_area.Error());
+      // check that low ell irreps of O(3) can be integrated exactly
+      double error_tol = 1.0e-12;
+      int l_max = (q == 5 ? 2 : 1);
+      for (int l = 0; l <= l_max; l++) {
+        for (int m = -l; m <= l; m++) {
+          Complex ylm_sum = 0.0;
+          for (int s = 0; s < lattice.n_sites; s++) {
+            ylm_sum += lattice.sites[s].wt * lattice.CalcYlm(s, l, m);
+          }
+          Complex ylm_mean = ylm_sum * sqrt(4.0 * M_PI) / lattice.vol;
+          // printf("l,m=%d,%+d: %+.12e %+.12e\n", l, m, real(ylm_mean),
+          //        imag(ylm_mean));
 
-  QfePhi4 field(&lattice, msq, lambda);
-  field.HotStart();
+          // l=0 should integrate to exactly 1, others should integrate to 0
+          if (l == 0) ylm_mean -= 1.0;
+          assert(std::abs(ylm_mean) < error_tol);
+        }
+      }
 
-  printf("initial action: %.12f\n", field.Action());
+      // write the orbits to a data file
+      FILE* temp_file = fopen("temp.dat", "w");
+      lattice.WriteOrbits(temp_file);
+      fclose(temp_file);
 
-  // measurements
-  std::vector<double> mag;
-  std::vector<double> action;
-  QfeMeasReal demon;
-  QfeMeasReal cluster_size;
-  QfeMeasReal accept_metropolis;
-  QfeMeasReal accept_overrelax;
+      // create a new lattice and read the orbit data
+      temp_file = fopen("temp.dat", "r");
+      QfeLatticeS2 check_lattice(q, k);
+      check_lattice.ReadOrbits(temp_file);
+      fclose(temp_file);
+      remove("temp.dat");
 
-  int n_therm = 1000;
-  int n_traj = 20000;
-  int n_skip = 20;
-  int n_wolff = 4;
-  for (int n = 0; n < (n_traj + n_therm); n++) {
-
-    int cluster_size_sum = 0;
-    for (int j = 0; j < n_wolff; j++) {
-      cluster_size_sum += field.WolffUpdate();
+      // check that the site positions match
+      for (int s = 0; s < lattice.n_sites; s++) {
+        assert(AlmostEq(lattice.r[s], check_lattice.r[s]));
+      }
     }
-    cluster_size.Measure(double(cluster_size_sum) / double(lattice.n_sites));
-    accept_metropolis.Measure(field.Metropolis());
-    accept_overrelax.Measure(field.Overrelax());
-    demon.Measure(field.overrelax_demon);
-
-    if (n % n_skip || n < n_therm) continue;
-
-    action.push_back(field.Action());
-    mag.push_back(field.MeanPhi());
-    printf("%06d %.12f %+.12f %.4f %.4f %.12f %.4f\n", \
-        n, action.back(), mag.back(), \
-        accept_metropolis.last, \
-        accept_overrelax.last, demon.last, \
-        cluster_size.last);
   }
-
-  std::vector<double> mag_abs(mag.size());
-  std::vector<double> mag2(mag.size());
-  std::vector<double> mag4(mag.size());
-  for (int i = 0; i < mag.size(); i++) {
-    double m = mag[i];
-    double m2 = m * m;
-    mag_abs[i] = abs(m);
-    mag2[i] = m2;
-    mag4[i] = m2 * m2;
-  }
-
-  printf("accept_metropolis: %.4f\n", accept_metropolis.Mean());
-  printf("accept_overrelax: %.4f\n", accept_overrelax.Mean());
-  printf("demon: %.12f (%.12f)\n", demon.Mean(), demon.Error());
-  printf("cluster_size/V: %.4f\n", cluster_size.Mean());
-  printf("action: %.12e (%.12e), %.4f\n", \
-      Mean(action), JackknifeMean(action), AutocorrTime(action));
-  printf("m: %.12e (%.12e), %.4f\n", \
-      Mean(mag), JackknifeMean(mag), AutocorrTime(mag));
-  printf("m^2: %.12e (%.12e), %.4f\n", \
-      Mean(mag2), JackknifeMean(mag2), AutocorrTime(mag2));
-  printf("m^4: %.12e (%.12e), %.4f\n", \
-      Mean(mag4), JackknifeMean(mag4), AutocorrTime(mag4));
-  printf("U4: %.12e (%.12e)\n", U4(mag2, mag4), JackknifeU4(mag2, mag4));
-  printf("susceptibility: %.12e (%.12e)\n", Susceptibility(mag2, mag_abs), \
-      JackknifeSusceptibility(mag2, mag_abs));
-
   return 0;
 }

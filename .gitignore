@@ -16,3 +16,11 @@ bin/*
 
 # jupyter notebooks
 jupyter/*
+
+# cached python files
+*.log
+*.pot
+*.pyc
+*/*/*/__pycache__/
+*/*/__pycache__/
+*/__pycache__/

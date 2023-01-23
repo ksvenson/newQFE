@@ -14,7 +14,7 @@
 // metropolis updates, which for a 64^2 lattice leads a net wolff cluster
 // roughly equal to the lattice size and a net metropolis acceptance of about 1.
 // With these parameters, we expect the 4th order binder cumulant to be near its
-// critical value of 0.8. we also expect to see a peak in the magnetic
+// critical value of ~0.9. we also expect to see a peak in the magnetic
 // susceptibility, which can be seen by varying beta.
 
 // [1] Z. Luo, et al., Chinese Phys. B 18, 2696 (2009).
@@ -63,6 +63,7 @@ int main(int argc, char* argv[]) {
     accept_metropolis.Measure(metropolis_sum);
 
     if (n % n_skip || n < n_therm) continue;
+    field.SWUpdate();
 
     action.Measure(field.Action());
     double m = fabs(field.MeanSpin());

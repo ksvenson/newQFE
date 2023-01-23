@@ -10,6 +10,7 @@
 
 #include "lattice.h"
 
+/// @brief Ising spin model
 class QfeIsing {
  public:
   QfeIsing(QfeLattice* lattice, double beta);
@@ -31,18 +32,22 @@ class QfeIsing {
   std::vector<bool> is_clustered;  // keeps track of which sites are clustered
   std::vector<int> wolff_cluster;  // array of clustered sites
   std::vector<int> sw_root;        // root for each site
-  // std::vector<std::vector<int>>
-  //     sw_clusters;  // array of sites in each sw cluster
 };
 
+/// @brief Ising model constructor
+/// @param lattice The Ising spins are defined on the lattice sites
+/// @param beta spin coupling coefficient (use link weights for local couplings)
 QfeIsing::QfeIsing(QfeLattice* lattice, double beta) {
   this->lattice = lattice;
   this->beta = beta;
-  spin.resize(lattice->sites.size());
-  is_clustered.resize(lattice->sites.size());
-  sw_root.resize(lattice->sites.size());
+  spin.resize(lattice->n_sites);
+  is_clustered.resize(lattice->n_sites);
+  sw_root.resize(lattice->n_sites);
 }
 
+/// @brief Write the Ising spins to a data file. Each spin value is packed into
+/// a single bit to reduce file size.
+/// @param file Data file
 void QfeIsing::WriteField(FILE* file) {
   int buf_size = (spin.size() + 7) / 8;
   std::vector<unsigned char> spin_buf(buf_size, 0);
@@ -59,6 +64,8 @@ void QfeIsing::WriteField(FILE* file) {
   fwrite(spin_buf.data(), 1, buf_size, file);
 }
 
+/// @brief Read the Ising spins from a data file
+/// @param file Data file
 void QfeIsing::ReadField(FILE* file) {
   int buf_size = (spin.size() + 7) / 8;
   std::vector<unsigned char> spin_buf(buf_size, 0);
@@ -75,6 +82,8 @@ void QfeIsing::ReadField(FILE* file) {
   }
 }
 
+/// @brief Calculate the Ising model action
+/// @return The action per spin
 double QfeIsing::Action() {
   double action = 0.0;
 
@@ -89,6 +98,8 @@ double QfeIsing::Action() {
   return action / lattice->vol;
 }
 
+/// @brief Compute the mean spin value, weighted by site weights.
+/// @return The mean spin (i.e. magnetization)
 double QfeIsing::MeanSpin() {
   double m = 0.0;
   for (int s = 0; s < lattice->n_sites; s++) {
@@ -97,6 +108,7 @@ double QfeIsing::MeanSpin() {
   return m / lattice->vol;
 }
 
+/// @brief Randomize all spins
 void QfeIsing::HotStart() {
   for (int s = 0; s < lattice->n_sites; s++) {
     if (lattice->rng.RandBool()) {
@@ -107,13 +119,14 @@ void QfeIsing::HotStart() {
   }
 }
 
+/// @brief Set all spins to +1
 void QfeIsing::ColdStart() {
   std::fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
 }
 
-// metropolis update algorithm
-// ref: N. Metropolis, et al., J. Chem. Phys. 21, 1087 (1953).
-
+/// @brief Metropolis update algorithm (i.e. Rosenbluth-Teller)
+/// ref: N. Metropolis, et al., J. Chem. Phys. 21, 1087 (1953).
+/// @return The acceptance rate
 double QfeIsing::Metropolis() {
   int accept = 0;
   for (int s = 0; s < lattice->n_sites; s++) {
@@ -137,9 +150,9 @@ double QfeIsing::Metropolis() {
   return double(accept) / double(lattice->n_sites);
 }
 
-// wolff cluster update algorithm
-// ref: U. Wolff, Phys. Rev. Lett. 62, 361 (1989).
-
+/// @brief Wolff cluster update algorithm
+/// ref: U. Wolff, Phys. Rev. Lett. 62, 361 (1989).
+/// @return Cluster size
 int QfeIsing::WolffUpdate() {
   // remove all sites from the cluster
   std::fill(is_clustered.begin(), is_clustered.end(), false);
@@ -185,9 +198,9 @@ int QfeIsing::WolffUpdate() {
   return wolff_cluster.size();
 }
 
-// swendsen-wang update algorithm
-// ref: R.H. Swendsen and J.S. Wang, Phys. Rev. Lett. 58, 86 (1987)
-
+/// @brief Swendsen-Wang update algorithm
+/// ref: R.H. Swendsen and J.S. Wang, Phys. Rev. Lett. 58, 86 (1987)
+/// @return The total number of clusters
 int QfeIsing::SWUpdate() {
   // each site begins in its own cluster
   std::iota(std::begin(sw_root), std::end(sw_root), 0);
@@ -214,7 +227,6 @@ int QfeIsing::SWUpdate() {
 
   std::map<int, int> sw_map;
   std::vector<bool> is_flipped;
-  // sw_clusters.clear();
   int n_clusters = 0;
   for (int s = 0; s < lattice->n_sites; s++) {
     // find the root node for this site
@@ -223,12 +235,10 @@ int QfeIsing::SWUpdate() {
     if (sw_map.find(r) == sw_map.end()) {
       sw_map[r] = n_clusters;
       is_flipped.push_back(lattice->rng.RandReal() > 0.5);
-      // sw_clusters.push_back(std::vector<int>());
       n_clusters++;
     }
 
     int c = sw_map[r];
-    // sw_clusters[c].push_back(s);
 
     // flip half the clusters
     if (is_flipped[c]) spin[s] = -spin[s];
@@ -237,6 +247,10 @@ int QfeIsing::SWUpdate() {
   return n_clusters;
 }
 
+/// @brief Find the root node for a Swendsen-Wang cluster. Also update the trail
+/// from the starting node to the root node to all be in the same cluster
+/// @param s Starting node
+/// @return Root node for this cluster
 int QfeIsing::FindSWRoot(int s) {
   int root = sw_root[s];
 

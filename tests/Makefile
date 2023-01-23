@@ -1,5 +1,10 @@
 CXX=g++
-CXXFLAGS=-std=c++11 -O3 -Wall
+CXXFLAGS=-std=c++14 -O3 -Wall -Wno-unknown-warning-option \
+	-Wno-deprecated-declarations -Wno-sign-compare
+
+# directory where executables can access symmetry group data files
+GRP_DIR=$(shell pwd)/../grp
+CXXFLAGS+=-DGRP_DIR="\"$(GRP_DIR)\""
 
 SRC=$(wildcard *.cc)
 BIN_DIR=../bin

@@ -6,8 +6,8 @@
 #include <cmath>
 #include <cstdio>
 #include <iostream>
-#include <map>
 #include <set>
+#include <vector>
 
 #include "s3.h"
 #include "timer.h"
@@ -24,35 +24,20 @@ std::vector<int> distinct_n_cells;
 std::vector<int> distinct_first_cell;
 std::vector<bool> is_oct_cell;
 
+// set of sites that need to be updated as part of the minimization procedure.
+// all other sites are ignored
 std::set<int> primary_sites;
-std::vector<std::vector<int>> deficit_s1;
-std::vector<std::vector<int>> deficit_s2;
-std::vector<std::vector<int>> deficit_s3;
-std::vector<std::vector<int>> deficit_c;
 
+// keep track of how much time is spent computing each type of error
 double update_time = 0.0;
 double cell_time = 0.0;
+double dual_time = 0.0;
 double deficit_time = 0.0;
 
-void PrintOrbits(QfeLatticeS3& lattice) {
-  for (int o = 0; o < lattice.n_distinct; o++) {
-    Vec4 xi = lattice.orbit_xi[o];
-    double xi1 = Chop(xi[0]);
-    double xi2 = Chop(xi[1]);
-    double xi3 = Chop(xi[2]);
-    double xi4 = Chop(xi[3]);
-    double xi_sum = xi[0] + xi[0] + xi[2] + xi[3];
-    printf("%04d %02d", o, orbit_type[o]);
-    printf(" %.6f %.6f %.6f %.6f %.6f", xi1, xi2, xi3, xi4, xi_sum);
-    int s = lattice.distinct_first[o];
-    if (lattice.sites[s].nn == 6 && o != 0) {
-      printf(" oct\n");
-    } else {
-      printf(" tet\n");
-    }
-  }
-}
-
+/// @brief Update positions of all primary sites in one orbit using the orbit
+/// barycentric coordinates.
+/// @param lattice The lattice
+/// @param o Orbit index
 void UpdateOrbit(QfeLatticeS3& lattice, int o) {
   Timer timer;
   Vec4 xi = lattice.orbit_xi[o];
@@ -118,6 +103,11 @@ void UpdateOrbit(QfeLatticeS3& lattice, int o) {
   update_time += timer.Duration();
 }
 
+/// @brief Compute the non-uniformity in cell volumes. Octahedral cell volumes
+/// are multiplied by 2. This is because in a flat lattice, the octahedral cells
+/// have half the volume of the tetrahedral cells.
+/// @param lattice The lattice
+/// @return Normalized variance in cell volumes
 double CellVolumeError(QfeLatticeS3& lattice) {
   Timer timer;
 
@@ -141,6 +131,11 @@ double CellVolumeError(QfeLatticeS3& lattice) {
   return Chop(vol_sq_mean / (vol_mean * vol_mean) - 1.0);
 }
 
+/// @brief Compute the non-uniformity in cell circumradius^3. This measure is
+/// not used in the minimization procedure, but it is a nice extra check to see
+/// if the lattice is becoming more uniform.
+/// @param lattice The lattice
+/// @return Normalized variance in cell circumradius^3
 double CircumradiusError(QfeLatticeS3& lattice) {
   double vol_sum = 0.0;
   double vol_sq_sum = 0.0;
@@ -162,33 +157,15 @@ double CircumradiusError(QfeLatticeS3& lattice) {
   double vol_sq_mean = vol_sq_sum / double(n_total);
 
   return Chop(vol_sq_mean / (vol_mean * vol_mean) - 1.0);
-
-  // double vol_sum = 0.0;
-  // std::vector<double> vol_list(distinct_first_cell.size());
-  // int n_total = 0;
-  // for (int i = 0; i < distinct_first_cell.size(); i++) {
-  //   int c = distinct_first_cell[i];
-  //   int s = lattice.cells[c].sites[0];
-  //   Vec4 cc = lattice.CellCircumcenter(distinct_first_cell[i]);
-  //   double cr = (cc - lattice.r[s]).norm();
-  //   double vol = cr * cr * cr;
-  //   vol_list[i] = vol;
-  //   vol_sum += vol * double(distinct_n_cells[i]);
-  //   n_total += distinct_n_cells[i];
-  // }
-  // double vol_mean = vol_sum / double(n_total);
-
-  // double error_sum = 0.0;
-  // for (int i = 0; i < distinct_first_cell.size(); i++) {
-  //   if (is_oct_cell[i]) continue;
-  //   double vol_err = 1.0 - vol_list[i] / vol_mean;
-  //   error_sum += pow(vol_err, 2.0) * double(distinct_n_cells[i]);
-  // }
-
-  // return error_sum / double(n_total);
 }
 
+/// @brief Compute the non-uniformity in vertex dual volumes. This function is
+/// relatively slow, so DeficitError is used instead.
+/// @param lattice The lattice
+/// @return Normalized variance in vertex dual volumes
 double DualVolumeError(QfeLatticeS3& lattice) {
+  Timer timer;
+
   double vol_sum = 0.0;
   double vol_sq_sum = 0.0;
 
@@ -268,80 +245,93 @@ double DualVolumeError(QfeLatticeS3& lattice) {
       }
     }
     double orbit_size = double(lattice.distinct_n_sites[o]);
+    // printf("%04d %.12f\n", s1, site_vol);
     vol_sum += site_vol * orbit_size;
     vol_sq_sum += site_vol * site_vol * orbit_size;
-    // if (o < 4) {
-    //   printf("%d %.12f\n", o, site_vol);
-    // }
   }
   double vol_mean = vol_sum / double(lattice.n_sites);
   double vol_sq_mean = vol_sq_sum / double(lattice.n_sites);
 
+  timer.Stop();
+  dual_time += timer.Duration();
+
   return Chop(vol_sq_mean / (vol_mean * vol_mean) - 1.0);
 }
 
+/// @brief Compute the deficit angle around a link.
+/// @param lattice The lattice
+/// @param l Link index
+/// @return Deficit angle around link @p l
+double EdgeDeficit(QfeLatticeS3& lattice, int l) {
+  int s1 = lattice.links[l].sites[0];
+  int s2 = lattice.links[l].sites[1];
+  double edge_sum = 0.0;
+
+  // find pairs of faces which form a tetrahedron
+  for (int i1 = 0; i1 < lattice.links[l].n_faces; i1++) {
+    int f1 = lattice.links[l].faces[i1];
+    int s3;
+    for (int e = 0; e < 3; e++) {
+      s3 = lattice.faces[f1].sites[e];
+      if (s3 != s1 && s3 != s2) break;
+    }
+
+    for (int i2 = i1 + 1; i2 < lattice.links[l].n_faces; i2++) {
+      int f2 = lattice.links[l].faces[i2];
+
+      int s4;
+      for (int e = 0; e < 3; e++) {
+        s4 = lattice.faces[f2].sites[e];
+        if (s4 != s1 && s4 != s2) break;
+      }
+
+      if (lattice.FindLink(s3, s4) == -1) continue;
+
+      Vec4 n1 = (lattice.r[s2] - lattice.r[s1]).normalized();
+      Vec4 n2 = (lattice.r[s3] - lattice.r[s1]).normalized();
+      Vec4 n3 = (lattice.r[s4] - lattice.r[s1]).normalized();
+
+      double cos23 = n2.dot(n3);
+      double cos12 = n1.dot(n2);
+      double cos13 = n1.dot(n3);
+      double sin12 = sqrt(1.0 - cos12 * cos12);
+      double sin13 = sqrt(1.0 - cos13 * cos13);
+
+      double cos_phi = (cos23 - cos12 * cos13) / (sin12 * sin13);
+      edge_sum += acos(cos_phi);
+    }
+  }
+  return 2.0 * M_PI - edge_sum;
+}
+
+/// @brief Compute the non-uniformity in vertex dual volumes calculated using
+/// the deficit angles around each link. For a spherical mesh, the radius of
+/// curvature is approximately constant. Therefore, the deficit angle around a
+/// link is a suitable approximation for the dual area associated with that
+/// link. The dual area times the link length is proportional to the link
+/// volume, so we can compute the site's dual volume by summing over all of the
+/// links attached to that site.
+/// @param lattice The lattice
+/// @return Normalized variance in vertex dual volumes
 double DeficitAngleError(QfeLatticeS3& lattice) {
   Timer timer;
   double deficit_sum = 0.0;
   double deficit_sq_sum = 0.0;
-  for (int id = 0; id < lattice.n_distinct; id++) {
-    double angle_sum = 0.0;
-    int s = lattice.distinct_first[id];
+  for (int o = 0; o < lattice.n_distinct; o++) {
+    double site_sum = 0.0;
+    int s = lattice.distinct_first[o];
 
-    for (int n = 0; n < deficit_s1[id].size(); n++) {
-      int s1 = deficit_s1[id][n];
-      int s2 = deficit_s2[id][n];
-      int s3 = deficit_s3[id][n];
-      int c = deficit_c[id][n];
+    for (int n = 0; n < lattice.sites[s].nn; n++) {
+      int l = lattice.sites[s].links[n];
 
-      double cell_vol = lattice.CellVolume(c);
-
-      Vec4 v1 = (lattice.r[s1] - lattice.r[s]);
-      Vec4 v2 = (lattice.r[s2] - lattice.r[s]);
-      Vec4 v3 = (lattice.r[s3] - lattice.r[s]);
-
-      double norm1 = v1.norm();
-      double norm2 = v2.norm();
-      double norm3 = v3.norm();
-
-      double dot12 = v1.dot(v2);
-      double dot23 = v2.dot(v3);
-      double dot31 = v3.dot(v1);
-
-      double den =
-          norm1 * norm2 * norm3 + dot12 * norm3 + dot23 * norm1 + dot31 * norm2;
-      if (AlmostEq(den, 0.0)) {
-        angle_sum += M_PI;
-      } else {
-        double cell_angle = atan(6.0 * cell_vol / den);
-        if (den < 0) {
-          cell_angle += M_PI;
-        }
-        angle_sum += 2.0 * cell_angle;
-      }
-
-      // // calculate the solid angle using L'Huilier's theorem
-      // Vec4 v1 = (lattice.r[s1] - lattice.r[s]).normalized();
-      // Vec4 v2 = (lattice.r[s2] - lattice.r[s]).normalized();
-      // Vec4 v3 = (lattice.r[s3] - lattice.r[s]).normalized();
-
-      // double t12 = acos(v1.dot(v2));
-      // double t23 = acos(v2.dot(v3));
-      // double t31 = acos(v3.dot(v1));
-      // double ts = 0.5 * (t12 + t23 + t31);
-      // double t_prod = tan(0.5 * ts) * tan(0.5 * (ts - t12)) *
-      //                 tan(0.5 * (ts - t23)) * tan(0.5 * (ts - t31));
-      // angle_sum += 4.0 * atan(sqrt(t_prod));
+      // the deficit angle around a link approximates the link's dual area
+      double edge_deficit = EdgeDeficit(lattice, l);
+      site_sum += edge_deficit * lattice.EdgeLength(l) / 3.0;
     }
-
-    double deficit_angle = 4.0 * M_PI - angle_sum;
-    double orbit_size = double(lattice.distinct_n_sites[id]);
-    deficit_sum += deficit_angle * orbit_size;
-    deficit_sq_sum += deficit_angle * deficit_angle * orbit_size;
-
-    // if (id < 4) {
-    //   printf("%d %.12f\n", id, deficit_angle);
-    // }
+    // printf("%04d %.12f\n", s, site_sum);
+    double orbit_size = double(lattice.distinct_n_sites[o]);
+    deficit_sum += site_sum * orbit_size;
+    deficit_sq_sum += site_sum * site_sum * orbit_size;
   }
 
   double deficit_mean = deficit_sum / double(lattice.n_sites);
@@ -350,92 +340,26 @@ double DeficitAngleError(QfeLatticeS3& lattice) {
   timer.Stop();
   deficit_time += timer.Duration();
 
-  // printf("total_deficit: %.12f\n", deficit_sum);
-  // exit(0);
-
   return Chop(deficit_sq_mean / (deficit_mean * deficit_mean) - 1.0);
 }
 
-double EdgeDeficit(QfeLatticeS3& lattice) {
-  lattice.CalcFEMWeights();
-  double a_lat = lattice.CalcLatticeSpacing();
-  double deficit_sum = 0.0;
-  // double check_sum = 0.0;
-  int check_s = 0;
-  for (int l = 0; l < lattice.n_links; l++) {
-    int s_a = lattice.links[l].sites[0];
-    int s_b = lattice.links[l].sites[1];
-    int n_cells = 0;
-    double edge_sum = 0.0;
-
-    // find pairs of faces which for a tetrahedron
-    for (int i1 = 0; i1 < lattice.links[l].n_faces; i1++) {
-      int f1 = lattice.links[l].faces[i1];
-      int s_c = lattice.faces[f1].sites[0];
-      if (s_c == s_a || s_c == s_b) {
-        s_c = lattice.faces[f1].sites[1];
-        if (s_c == s_a || s_c == s_b) {
-          s_c = lattice.faces[f1].sites[2];
-        }
-      }
-
-      for (int i2 = i1 + 1; i2 < lattice.links[l].n_faces; i2++) {
-        int f2 = lattice.links[l].faces[i2];
-        int s_d = lattice.faces[f2].sites[0];
-        if (s_d == s_a || s_d == s_b) {
-          s_d = lattice.faces[f2].sites[1];
-          if (s_d == s_a || s_d == s_b) {
-            s_d = lattice.faces[f2].sites[2];
-          }
-        }
-
-        if (lattice.FindLink(s_c, s_d) == -1) continue;
-        n_cells++;
-
-        Vec4 n1 = (lattice.r[s_b] - lattice.r[s_a]).normalized();
-        Vec4 n2 = (lattice.r[s_c] - lattice.r[s_a]).normalized();
-        Vec4 n3 = (lattice.r[s_d] - lattice.r[s_a]).normalized();
-
-        double cos23 = n2.dot(n3);
-        double cos12 = n1.dot(n2);
-        double cos13 = n1.dot(n3);
-        double sin12 = sqrt(1.0 - cos12 * cos12);
-        double sin13 = sqrt(1.0 - cos13 * cos13);
-
-        double cos_phi = (cos23 - cos12 * cos13) / (sin12 * sin13);
-        edge_sum += acos(cos_phi);
-      }
-    }
-    double deficit_angle = 2.0 * M_PI - edge_sum;
-    double edge_dual_area = lattice.links[l].wt * a_lat * lattice.EdgeLength(l);
-    deficit_sum += deficit_angle;
-    if (s_a == check_s || s_b == check_s) {
-      // check_sum += 2.0 * M_PI - edge_sum;
-      printf("%d %d %.12f\n", s_a, s_b, deficit_angle / edge_dual_area);
-    }
-  }
-  printf("a_lat: %.12f\n", a_lat);
-  printf("edge_deficit_sum: %.12f\n", deficit_sum);
-  exit(0);
-}
-
+/// @brief Compute the combined non-uniformity measure that is being minimized.
+/// We simultaneously minimize the variance in both in the cell volume and the
+/// vertex dual volumes.
+/// @param lattice The lattice
+/// @return The combined non-uniformity measure
 double CombinedError(QfeLatticeS3& lattice) {
-  // return CellVolumeError(lattice);
-  // return CircumradiusError(lattice);
-  // return DualVolumeError(lattice);
-  // return CellVolumeError(lattice) + CircumradiusError(lattice);
-  // return CellVolumeError(lattice) + CircumradiusError(lattice) +
-  //        DualVolumeError(lattice);
-  return CellVolumeError(lattice) + DualVolumeError(lattice);
+  return CellVolumeError(lattice) + DeficitAngleError(lattice);
 }
 
+/// @brief Print the current measures of non-uniformity.
+/// @param lattice The lattice
 void PrintError(QfeLatticeS3& lattice) {
   double cell_err = CellVolumeError(lattice);
   double cr_err = CircumradiusError(lattice);
   double dual_err = DualVolumeError(lattice);
   double deficit_err = DeficitAngleError(lattice);
-  double sum_err = cell_err + cr_err + dual_err;
-  // EdgeDeficit(lattice);
+  double sum_err = cell_err + deficit_err;
   printf("cell_err: %.12e\n", cell_err);
   printf("cr_err:   %.12e\n", cr_err);
   printf("dual_err: %.12e\n", dual_err);
@@ -443,40 +367,23 @@ void PrintError(QfeLatticeS3& lattice) {
   printf("sum_err:  %.12e\n", sum_err);
 }
 
+/// @brief This program attempts find a simplicial lattice discretization of a
+/// 3-sphere such that all triangles have an equal effective lattice spacing. We
+/// minimize the variance in both the cell volumes and the dual volume of
+/// each vertex. We first identify the degrees of freedom which do not break
+/// the symmetries of the base polytope. We then use Newton's method to find the
+/// minimum in the variance.
 int main(int argc, const char* argv[]) {
   int q = 5;
   int k = 2;
+  std::string orbit_path = "";
 
   if (argc > 1) q = atoi(argv[1]);
   if (argc > 2) k = atoi(argv[2]);
+  if (argc > 3) orbit_path = argv[3];
 
   QfeLatticeS3 lattice(q, k);
   lattice.UpdateDistinct();
-
-  // generate the lists of sites for calculating deficit angles
-  deficit_s1.resize(lattice.n_distinct);
-  deficit_s2.resize(lattice.n_distinct);
-  deficit_s3.resize(lattice.n_distinct);
-  deficit_c.resize(lattice.n_distinct);
-  for (int id = 0; id < lattice.n_distinct; id++) {
-    int s = lattice.distinct_first[id];
-    for (int n1 = 0; n1 < lattice.sites[s].nn; n1++) {
-      int s1 = lattice.sites[s].neighbors[n1];
-      for (int n2 = n1 + 1; n2 < lattice.sites[s].nn; n2++) {
-        int s2 = lattice.sites[s].neighbors[n2];
-        for (int n3 = n2 + 1; n3 < lattice.sites[s].nn; n3++) {
-          int s3 = lattice.sites[s].neighbors[n3];
-
-          int c = lattice.FindCell(s, s1, s2, s3);
-          if (c == -1) continue;
-          deficit_s1[id].push_back(s1);
-          deficit_s2[id].push_back(s2);
-          deficit_s3[id].push_back(s3);
-          deficit_c[id].push_back(c);
-        }
-      }
-    }
-  }
 
   std::vector<int> dof_orbit;  // orbit number for each degree of freedom
   std::vector<int> dof_index;  // coordinate index within each orbit
@@ -590,10 +497,10 @@ int main(int argc, const char* argv[]) {
   // printf("cell degeneracies:\n");
   // for (int i = 0; i < distinct_n_cells.size(); i++) {
   //   int c = distinct_first_cell[i];
-  //   printf("%d %d %.6e %s\n", i, distinct_n_cells[i], lattice.CellVolume(c),
+  //   printf("%d %d %.6e %s\n", i, distinct_n_cells[i],
+  //   lattice.CellVolume(c),
   //          is_oct_cell[i] ? "oct" : "tet");
   // }
-  // PrintOrbits(lattice);
 
   // compute the initial error
   PrintError(lattice);
@@ -602,6 +509,7 @@ int main(int argc, const char* argv[]) {
 
   double delta = 1.0e-5;
   double delta_sq = delta * delta;
+  int mu = 0;  // preconditioning value
   for (int n = 0; n < 10000; n++) {
     Mat A = Mat::Zero(n_dof, n_dof);
     Mat b = Vec::Zero(n_dof);
@@ -681,10 +589,9 @@ int main(int argc, const char* argv[]) {
       lattice.orbit_xi[o1](dof1) = base_value1;
       UpdateOrbit(lattice, o1);
     }
-    // PrintOrbits(lattice);
 
-    int mu = 0;
-    double lambda = 1.0;
+    if (mu > 0) mu--;     // try to decrease mu by 1 once per iteration
+    double lambda = 1.0;  // keep this fixed at 1.0
 
     std::vector<double> old_dof(n_dof);
     for (int d = 0; d < n_dof; d++) {
@@ -702,41 +609,29 @@ int main(int argc, const char* argv[]) {
       assert(cg.info() == Eigen::Success);
       Vec x = cg.solve(b);
 
-      lambda = 1.0;
-      while (true) {
-        // update the barycentric coordinates of each orbit
-        for (int d = 0; d < n_dof; d++) {
-          int o = dof_orbit[d];
-          int dof = dof_index[d];
-          lattice.orbit_xi[o](dof) = old_dof[d] - x(d) * lambda;
-        }
-
-        // apply the new positions to all of the orbits
-        for (int d = 0; d < n_dof; d++) {
-          if (dof_index[d] != 0) continue;
-          int o = dof_orbit[d];
-          UpdateOrbit(lattice, o);
-        }
-
-        // compute the new error
-        error_sum = CombinedError(lattice);
-
-        if (error_sum < old_error) break;
-        // printf("%04d %02d %.2e %.12e\n", n, mu, lambda, error_sum);
-        assert(!isnan(error_sum));
-
-        lambda *= 0.5;
-        if (lambda < 0.125) {
-          break;
-        }
+      // update the barycentric coordinates of each orbit
+      for (int d = 0; d < n_dof; d++) {
+        int o = dof_orbit[d];
+        int dof = dof_index[d];
+        lattice.orbit_xi[o](dof) = old_dof[d] - x(d) * lambda;
       }
+
+      // apply the new positions to all of the orbits
+      for (int d = 0; d < n_dof; d++) {
+        if (dof_index[d] != 0) continue;
+        int o = dof_orbit[d];
+        UpdateOrbit(lattice, o);
+      }
+
+      // compute the new error
+      error_sum = CombinedError(lattice);
 
       if (error_sum < old_error) break;
       // printf("%04d %02d %.2e %.12e\n", n, mu, lambda, error_sum);
       assert(!isnan(error_sum));
 
       mu++;
-      if (mu > 50) break;
+      if (mu > 500) break;
       A += Mat::Identity(n_dof, n_dof);
     }
 
@@ -744,22 +639,23 @@ int main(int argc, const char* argv[]) {
     double delta_err = (old_error - error_sum) / old_error;
     old_error = error_sum;
     printf("%04d %02d %.4f %.12e %.12e\n", n, mu, lambda, error_sum, delta_err);
-    if (mu > 50) break;
-    // if (lambda < 1.0) continue;
+    if (mu > 500) break;
     if (delta_err < 1.0e-10 || error_sum < 1.0e-14) break;
   }
 
-  // PrintOrbits(lattice);
   PrintError(lattice);
 
-  std::string orbit_path = string_format("orbit_q%dk%d.dat", q, k);
-  printf("writing orbit file: %s\n", orbit_path.c_str());
-  FILE* orbit_file = fopen(orbit_path.c_str(), "w");
-  lattice.WriteOrbits(orbit_file);
-  fclose(orbit_file);
+  // save orbit data to file
+  if (!orbit_path.empty()) {
+    FILE* orbit_file = fopen(orbit_path.c_str(), "w");
+    assert(orbit_file != nullptr);
+    lattice.WriteOrbits(orbit_file);
+    fclose(orbit_file);
+  }
 
   printf("update_time: %.6f\n", update_time);
   printf("cell_time: %.6f\n", cell_time);
+  printf("dual_time: %.6f\n", dual_time);
   printf("deficit_time: %.6f\n", deficit_time);
 
   return 0;

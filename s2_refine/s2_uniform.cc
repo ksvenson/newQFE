@@ -13,9 +13,8 @@
 #include "timer.h"
 #include "util.h"
 
-typedef double Real;
-typedef Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> Mat;
-typedef Eigen::Matrix<Real, Eigen::Dynamic, 1> Vec;
+typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Mat;
+typedef Eigen::Matrix<double, Eigen::Dynamic, 1> Vec;
 
 enum OrbitType { V, E, F, VE, VF, EF, VEF };
 
@@ -23,8 +22,15 @@ std::vector<OrbitType> orbit_type;
 
 std::vector<int> distinct_n_faces;
 std::vector<int> distinct_first_face;
+
+// set of sites that need to be updated as part of the minimization procedure.
+// all other sites are ignored
 std::set<int> primary_sites;
 
+/// @brief Update positions of all primary sites in one orbit using the orbit
+/// barycentric coordinates.
+/// @param lattice The lattice
+/// @param o Orbit index
 void UpdateOrbit(QfeLatticeS2& lattice, int o) {
   Timer timer;
   Vec3 xi = lattice.orbit_xi[o];
@@ -63,6 +69,9 @@ void UpdateOrbit(QfeLatticeS2& lattice, int o) {
   }
 }
 
+/// @brief Compute the non-uniformity in face areas.
+/// @param lattice The lattice
+/// @return Normalized variance in face volumes
 double FaceAreaError(QfeLatticeS2& lattice) {
   double area_sum = 0.0;
   double area_sq_sum = 0.0;
@@ -80,6 +89,11 @@ double FaceAreaError(QfeLatticeS2& lattice) {
   return area_sq_mean / (area_mean * area_mean) - 1.0;
 }
 
+/// @brief Compute the non-uniformity in face circumradius^2. This measure is
+/// not used in the minimization procedure, but it is a nice extra check to see
+/// if the lattice is becoming more uniform.
+/// @param lattice The lattice
+/// @return Normalized variance in face circumradius^3
 double CircumradiusError(QfeLatticeS2& lattice) {
   double area_sum = 0.0;
   double area_sq_sum = 0.0;
@@ -101,6 +115,10 @@ double CircumradiusError(QfeLatticeS2& lattice) {
   return area_sq_mean / (area_mean * area_mean) - 1.0;
 }
 
+/// @brief Compute the non-uniformity in vertex dual areas. This function is
+/// relatively slow, so DeficitError is used instead.
+/// @param lattice The lattice
+/// @return Normalized variance in vertex dual areas
 double DualAreaError(QfeLatticeS2& lattice) {
   double area_sum = 0.0;
   double area_sq_sum = 0.0;
@@ -142,6 +160,13 @@ double DualAreaError(QfeLatticeS2& lattice) {
   return area_sq_mean / (area_mean * area_mean) - 1.0;
 }
 
+/// @brief Compute the non-uniformity in vertex dual areas calculated using
+/// the deficit angles around the site. For a spherical mesh, the radius of
+/// curvature is approximately constant. Therefore, the deficit angle around a
+/// vertex is a suitable approximation for the dual area associated with that
+/// vertex.
+/// @param lattice The lattice
+/// @return Normalized variance in vertex dual areas
 double DeficitAngleError(QfeLatticeS2& lattice) {
   double deficit_sum = 0.0;
   double deficit_sq_sum = 0.0;
@@ -175,22 +200,23 @@ double DeficitAngleError(QfeLatticeS2& lattice) {
   return deficit_sq_mean / (deficit_mean * deficit_mean) - 1.0;
 }
 
+/// @brief Compute the combined non-uniformity measure that is being minimized.
+/// We simultaneously minimize the variance in both in the face area and the
+/// vertex dual areas.
+/// @param lattice The lattice
+/// @return The combined non-uniformity measure
 double CombinedError(QfeLatticeS2& lattice) {
-  // return FaceAreaError(lattice);
-  // return DualAreaError(lattice);
-  // return CircumradiusError(lattice);
-  // return FaceAreaError(lattice) + CircumradiusError(lattice) +
-  //        DualAreaError(lattice);
-  // return DeficitAngleError(lattice);
   return FaceAreaError(lattice) + DeficitAngleError(lattice);
 }
 
+/// @brief Print the current measures of non-uniformity.
+/// @param lattice The lattice
 void PrintError(QfeLatticeS2& lattice) {
   double face_err = FaceAreaError(lattice);
   double cr_err = CircumradiusError(lattice);
   double dual_err = DualAreaError(lattice);
   double deficit_err = DeficitAngleError(lattice);
-  double sum_err = face_err + cr_err + dual_err;
+  double sum_err = face_err + deficit_err;
   printf("face_err: %.12e\n", face_err);
   printf("cr_err:   %.12e\n", cr_err);
   printf("dual_err: %.12e\n", dual_err);
@@ -199,11 +225,11 @@ void PrintError(QfeLatticeS2& lattice) {
 }
 
 /// @brief This program attempts find a simplicial lattice discretization of a
-/// 2-sphere such that all triangles have an equal effective lattice spacing. In
-/// practice, we minimize the variance in both the triangle areas and the
-/// angular deficit at each vertex. We first identify the degrees of freedom
-/// which do not break polyhedral symmetry. We then use Newton's method to find
-/// the minimum in the variance.
+/// 2-sphere such that all triangles have an equal effective lattice spacing. We
+/// minimize the variance in both the triangle areas and the angular deficit at
+/// each vertex. We first identify the degrees of freedom which do not break
+/// polyhedral symmetry. We then use Newton's method to find the minimum in the
+/// variance.
 int main(int argc, const char* argv[]) {
   int q = 5;
   int k = 1;

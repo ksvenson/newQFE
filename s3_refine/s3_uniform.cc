@@ -374,6 +374,9 @@ void PrintError(QfeLatticeS3& lattice) {
 /// the symmetries of the base polytope. We then use Newton's method to find the
 /// minimum in the variance.
 int main(int argc, const char* argv[]) {
+  Timer timer;
+  double max_wall_time = 72000.0;  // 20 hours
+
   int q = 5;
   int k = 2;
   std::string orbit_path = "";
@@ -383,7 +386,14 @@ int main(int argc, const char* argv[]) {
   if (argc > 3) orbit_path = argv[3];
 
   QfeLatticeS3 lattice(q, k);
-  lattice.UpdateDistinct();
+  if (!orbit_path.empty()) {
+    FILE* orbit_file = fopen(orbit_path.c_str(), "r");
+    if (orbit_file != nullptr) {
+      printf("reading orbit file: %s\n", orbit_path.c_str());
+      lattice.ReadOrbits(orbit_file);
+      fclose(orbit_file);
+    }
+  }
 
   std::vector<int> dof_orbit;  // orbit number for each degree of freedom
   std::vector<int> dof_index;  // coordinate index within each orbit
@@ -510,7 +520,9 @@ int main(int argc, const char* argv[]) {
   double delta = 1.0e-5;
   double delta_sq = delta * delta;
   int mu = 0;  // preconditioning value
-  for (int n = 0; n < 10000; n++) {
+  for (int n = 0; true; n++) {
+    if (timer.Duration() > max_wall_time) break;
+
     Mat A = Mat::Zero(n_dof, n_dof);
     Mat b = Vec::Zero(n_dof);
 
@@ -649,6 +661,7 @@ int main(int argc, const char* argv[]) {
   if (!orbit_path.empty()) {
     FILE* orbit_file = fopen(orbit_path.c_str(), "w");
     assert(orbit_file != nullptr);
+    printf("writing orbit file: %s\n", orbit_path.c_str());
     lattice.WriteOrbits(orbit_file);
     fclose(orbit_file);
   }

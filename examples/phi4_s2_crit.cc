@@ -322,6 +322,11 @@ int main(int argc, char* argv[]) {
 
     if (n % n_skip || n < n_therm) continue;
 
+    // measure overrelaxation demon
+    if (do_overrelax) {
+      overrelax_demon.Measure(field.overrelax_demon);
+    }
+
     // measure correlators
     std::vector<Complex> ylm_2pt_sum(n_ylm, 0.0);
     double mag_sum = 0.0;

@@ -32,7 +32,6 @@ std::set<int> primary_sites;
 /// @param lattice The lattice
 /// @param o Orbit index
 void UpdateOrbit(QfeLatticeS2& lattice, int o) {
-  Timer timer;
   Vec3 xi = lattice.orbit_xi[o];
   OrbitType type = orbit_type[o];
   switch (type) {
@@ -69,6 +68,50 @@ void UpdateOrbit(QfeLatticeS2& lattice, int o) {
   }
 }
 
+void ApplyTegmark(QfeLatticeS2& lattice, int o, int q) {
+  Vec3 xi = lattice.orbit_xi[o];
+
+  // side length of an polyhedron circumscribing a unit sphere
+  double a = 0.0;
+
+  // ratio of polyhedron face area to spherical triangle area
+  double eta = 0.0;
+
+  if (q == 3) {
+    a = 4.8989794855663561964L;
+    eta = 1.8187834869853949433L;
+  } else if (q == 4) {
+    a = 2.4494897427831780982L;
+    eta = 1.2860741371574875693L;
+  } else if (q == 5) {
+    a = 1.3231690764992149954L;
+    eta = 1.0984384492890766198L;
+  }
+
+  const double sqrt3 = 1.7320508075688772935L;
+
+  double x1 = 0.5 * a * (xi[0] - xi[1]);
+  double y1 = 0.86602540378443864676L * a * (xi[0] + xi[1] - 2.0 / 3.0);
+
+  // this is the inverse transform
+  // double c1 = sqrt(1.0 + 4.0 * y1 * y1);
+  // double y2 = eta * sqrt(2.0 / sqrt3 * atan(sqrt3 * (c1 - 1.0) / (c1
+  // + 3.0))); double x2 = x1 * y2 / y1 * c1 / sqrt(1.0 + x1 * x1 + y1 * y1);
+
+  double c1 = tan(sqrt3 * y1 * y1 / 2.0 / eta / eta);
+  double y2 =
+      0.5 * sqrt(3.0 * pow((1.0 + sqrt3 * c1) / (sqrt3 - c1), 2.0) - 1.0);
+  double x2 = x1 * y2 *
+              sqrt((1.0 + y2 * y2) /
+                   (y1 * y1 * (1.0 + 4.0 * y2 * y2) - x1 * x1 * y2 * y2));
+
+  xi[0] = 1.0 / 3.0 + (x2 + y2 / sqrt(3.0)) / a;
+  xi[1] = 1.0 / 3.0 - (x2 - y2 / sqrt(3.0)) / a;
+  xi[2] = 1.0 - xi[0] - xi[1];
+  // printf("%d %.6f %.6f %.6f %.6f %.6f\n", o, xi[0], xi[1], xi[2], x2, y2);
+  lattice.orbit_xi[o] = xi;
+}
+
 /// @brief Compute the non-uniformity in face areas.
 /// @param lattice The lattice
 /// @return Normalized variance in face volumes
@@ -89,9 +132,7 @@ double FaceAreaError(QfeLatticeS2& lattice) {
   return area_sq_mean / (area_mean * area_mean) - 1.0;
 }
 
-/// @brief Compute the non-uniformity in face circumradius^2. This measure is
-/// not used in the minimization procedure, but it is a nice extra check to see
-/// if the lattice is becoming more uniform.
+/// @brief Compute the non-uniformity in face circumradius^2.
 /// @param lattice The lattice
 /// @return Normalized variance in face circumradius^3
 double CircumradiusError(QfeLatticeS2& lattice) {
@@ -201,22 +242,25 @@ double DeficitAngleError(QfeLatticeS2& lattice) {
 }
 
 /// @brief Compute the combined non-uniformity measure that is being minimized.
-/// We simultaneously minimize the variance in both in the face area and the
-/// vertex dual areas.
 /// @param lattice The lattice
 /// @return The combined non-uniformity measure
 double CombinedError(QfeLatticeS2& lattice) {
-  return FaceAreaError(lattice) + DeficitAngleError(lattice);
+  return FaceAreaError(lattice) + CircumradiusError(lattice);
+  // return FaceAreaError(lattice) + DeficitAngleError(lattice);
+  // return FaceAreaError(lattice) + CircumradiusError(lattice) +
+  //        DeficitAngleError(lattice);
 }
 
 /// @brief Print the current measures of non-uniformity.
 /// @param lattice The lattice
 void PrintError(QfeLatticeS2& lattice) {
+  double a_lat = lattice.CalcLatticeSpacing();
   double face_err = FaceAreaError(lattice);
   double cr_err = CircumradiusError(lattice);
   double dual_err = DualAreaError(lattice);
   double deficit_err = DeficitAngleError(lattice);
   double sum_err = face_err + deficit_err;
+  printf("a_lat: %.12e\n", a_lat);
   printf("face_err: %.12e\n", face_err);
   printf("cr_err:   %.12e\n", cr_err);
   printf("dual_err: %.12e\n", dual_err);
@@ -243,12 +287,14 @@ int main(int argc, const char* argv[]) {
   if (argc > 3) orbit_path = argv[3];
 
   QfeLatticeS2 lattice(q, k);
+  bool do_tegmark = true;
   if (!orbit_path.empty()) {
     FILE* orbit_file = fopen(orbit_path.c_str(), "r");
     if (orbit_file != nullptr) {
       printf("reading orbit file: %s\n", orbit_path.c_str());
       lattice.ReadOrbits(orbit_file);
       fclose(orbit_file);
+      do_tegmark = false;
     }
   }
 
@@ -326,6 +372,30 @@ int main(int argc, const char* argv[]) {
     primary_sites.insert(lattice.faces[f].sites[2]);
   }
   printf("# of primary sites: %lu\n", primary_sites.size());
+
+  if (do_tegmark) {
+    PrintError(lattice);
+    printf("applying tegmark optimization\n");
+    for (int o = 0; o < lattice.n_distinct; o++) {
+      if (orbit_type[o] < OrbitType::VE) continue;
+      ApplyTegmark(lattice, o, q);
+      UpdateOrbit(lattice, o);
+    }
+  }
+
+#ifdef TEGMARK_ONLY
+  PrintError(lattice);
+  lattice.UpdateOrbits();
+  lattice.PrintCoordinates();
+  if (!orbit_path.empty()) {
+    FILE* orbit_file = fopen(orbit_path.c_str(), "w");
+    assert(orbit_file != nullptr);
+    printf("writing orbit file: %s\n", orbit_path.c_str());
+    lattice.WriteOrbits(orbit_file);
+    fclose(orbit_file);
+  }
+  exit(0);
+#endif  // TEGMARK_ONLY
 
   // compute the initial error
   PrintError(lattice);
@@ -417,7 +487,8 @@ int main(int argc, const char* argv[]) {
       UpdateOrbit(lattice, o1);
     }
 
-    if (mu > 0) mu--;     // try to decrease mu by 1 once per iteration
+    // try to decrease mu by 1 for the first 100 iterations
+    if (n < 100 && mu > 0) mu--;
     double lambda = 1.0;  // keep this fixed at 1.0
 
     std::vector<double> old_dof(n_dof);
@@ -427,15 +498,24 @@ int main(int argc, const char* argv[]) {
       old_dof[d] = lattice.orbit_xi[o](dof);
     }
 
+    // set a minimum value for the diagonal preconditioner
+    Mat A_diag(A.diagonal().asDiagonal());
+
+    for (int n = 0; n < n_dof; n++) {
+      if (A_diag(n, n) < 1.0) {
+        A_diag(n, n) = 1.0;
+      }
+    }
+
     while (true) {
       // compute the solution
       Eigen::ConjugateGradient<Mat> cg;
-      Mat A_precond = A + Mat::Identity(n_dof, n_dof) * double(mu);
+      Mat A_precond = A + A_diag * double(mu) * 0.1;
 
       cg.compute(A_precond);
       assert(cg.info() == Eigen::Success);
       Vec x = cg.solve(b);
-
+      lambda = 1.0;
       // update the barycentric coordinates of each orbit
       for (int d = 0; d < n_dof; d++) {
         int o = dof_orbit[d];
@@ -452,21 +532,22 @@ int main(int argc, const char* argv[]) {
 
       // compute the new error
       error_sum = CombinedError(lattice);
-
-      if (error_sum < old_error) break;
-      // printf("%04d %02d %.2e %.12e\n", n, mu, lambda, error_sum);
       assert(!isnan(error_sum));
+      if (error_sum < old_error) break;
 
       mu++;
-      if (mu > 500) break;
-      A += Mat::Identity(n_dof, n_dof);
+      if (mu == 500) break;
     }
 
     // check the error
     double delta_err = (old_error - error_sum) / old_error;
     old_error = error_sum;
-    printf("%04d %02d %.4f %.12e %.12e\n", n, mu, lambda, error_sum, delta_err);
-    if (mu > 500) break;
+    if (n < 100 || (n % 100 == 0)) {
+      // print the error every 100 iterations
+      printf("%04d %02d %.4f %.12e %.12e\n", n, mu, lambda, error_sum,
+             delta_err);
+    }
+    if (mu == 500) break;
     if (delta_err < 1.0e-10 || error_sum < 1.0e-14) break;
   }
 

@@ -400,14 +400,16 @@ void QfeLattice::InitTriangle(int Nx, int Ny, double wt1, double wt2,
     // each link will end up with 6 neighbors
     int xp1 = (x + 1) % Nx;
     int yp1 = (y + 1) % Ny;
-    int xm1 = (x - 1 + Nx) % Nx;
 
     // add "right-handed" faces
-    int f = AddFace(s, xp1 + y * Nx, x + yp1 * Nx);
-    AddFace(s, x + yp1 * Nx, xm1 + yp1 * Nx);
-    links[faces[f].edges[2]].wt = wt1;
-    links[faces[f].edges[0]].wt = wt2;
-    links[faces[f].edges[1]].wt = wt3;
+    AddFace(s, xp1 + y * Nx, x + yp1 * Nx);
+    AddFace(xp1 + y * Nx, xp1 + yp1 * Nx, x + yp1 * Nx);
+    int l1 = FindLink(s, xp1 + y * Nx);
+    int l2 = FindLink(s, x + yp1 * Nx);
+    int l3 = FindLink(xp1 + y * Nx, x + yp1 * Nx);
+    links[l1].wt = wt1;
+    links[l2].wt = wt2;
+    links[l3].wt = wt3;
   }
 }
 

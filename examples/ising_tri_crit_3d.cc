@@ -2,7 +2,6 @@
 
 #include <getopt.h>
 
-#include <Eigen/Dense>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -246,34 +245,86 @@ int main(int argc, char* argv[]) {
   double m4_mean = mag_4.Mean();
   double m4_err = mag_4.Error();
 
+  char run_id[50];
+  sprintf(run_id, "%d_%.6f_%.3f_%.3f_%.3f_%.3f", N, beta, K1, K2, K3, K4);
+
+  // open an output file for the bulk data
+  char bulk_path[200];
+  sprintf(bulk_path, "%s/%s_%08X_bulk.dat", data_dir.c_str(), run_id, seed);
+  printf("opening file: %s\n", bulk_path);
+  FILE* bulk_file = fopen(bulk_path, "w");
+  assert(bulk_file != nullptr);
+
+  printf("action: %+.12e %.12e %.4f %.4f\n", action.Mean(), action.Error(),
+         action.AutocorrFront(), action.AutocorrBack());
+  fprintf(bulk_file, "action ");
+  action.WriteMeasurement(bulk_file);
+
+  printf("mag: %.12e %.12e %.4f %.4f\n", m_mean, m_err, mag.AutocorrFront(),
+         mag.AutocorrBack());
+  fprintf(bulk_file, "mag ");
+  mag.WriteMeasurement(bulk_file);
+
+  printf("m^2: %.12e %.12e %.4f %.4f\n", m2_mean, m2_err, mag_2.AutocorrFront(),
+         mag_2.AutocorrBack());
+  fprintf(bulk_file, "mag^2 ");
+  mag_2.WriteMeasurement(bulk_file);
+
+  printf("m^4: %.12e %.12e %.4f %.4f\n", m4_mean, m4_err, mag_4.AutocorrFront(),
+         mag_4.AutocorrBack());
+  fprintf(bulk_file, "mag^4 ");
+  mag_4.WriteMeasurement(bulk_file);
+
+  printf("m^6: %.12e %.12e %.4f %.4f\n", mag_6.Mean(), mag_6.Error(),
+         mag_6.AutocorrFront(), mag_6.AutocorrBack());
+  fprintf(bulk_file, "mag^6 ");
+  mag_6.WriteMeasurement(bulk_file);
+
+  printf("m^8: %.12e %.12e %.4f %.4f\n", mag_8.Mean(), mag_8.Error(),
+         mag_8.AutocorrFront(), mag_8.AutocorrBack());
+  fprintf(bulk_file, "mag^8 ");
+  mag_8.WriteMeasurement(bulk_file);
+
+  printf("m^10: %.12e %.12e %.4f %.4f\n", mag_10.Mean(), mag_10.Error(),
+         mag_10.AutocorrFront(), mag_10.AutocorrBack());
+  fprintf(bulk_file, "mag^10 ");
+  mag_10.WriteMeasurement(bulk_file);
+
+  printf("m^12: %.12e %.12e %.4f %.4f\n", mag_12.Mean(), mag_12.Error(),
+         mag_12.AutocorrFront(), mag_12.AutocorrBack());
+  fprintf(bulk_file, "mag^12 ");
+  mag_12.WriteMeasurement(bulk_file);
+
+  fclose(bulk_file);
+
   double U4_mean = 1.5 * (1.0 - m4_mean / (3.0 * m2_mean * m2_mean));
   double U4_err =
       0.5 * U4_mean *
       sqrt(pow(m4_err / m4_mean, 2.0) + pow(2.0 * m2_err / m2_mean, 2.0));
   printf("U4: %.12e %.12e\n", U4_mean, U4_err);
 
-  double m_susc_mean = m2_mean - m_mean * m_mean;
-  double m_susc_err = sqrt(pow(m2_err, 2.0) + pow(2.0 * m_mean * m_err, 2.0));
+  double m_susc_mean = (m2_mean - m_mean * m_mean) * vol;
+  double m_susc_err =
+      sqrt(pow(m2_err, 2.0) + pow(2.0 * m_mean * m_err, 2.0)) * vol;
   printf("m_susc: %.12e %.12e\n", m_susc_mean, m_susc_err);
 
-  // open an output file
-  char run_id[50];
-  char path[200];
-  sprintf(run_id, "%d_%.6f_%.3f_%.3f_%.3f_%.3f", N, beta, K1, K2, K3, K4);
-  sprintf(path, "%s/%s_%08X.dat", data_dir.c_str(), run_id, seed);
-  printf("opening file: %s\n", path);
-  FILE* file = fopen(path, "w");
-  assert(file != nullptr);
+  // open an output file for the correlator data
+  char corr_path[200];
+  sprintf(corr_path, "%s/%s_%08X_corr.dat", data_dir.c_str(), run_id, seed);
+  printf("opening file: %s\n", corr_path);
+  FILE* corr_file = fopen(corr_path, "w");
+  assert(corr_file != nullptr);
 
   for (int i = 0; i < n_corr; i++) {
     int dx = i % (max_window * 2 + 1);
     int dy = (i / (max_window * 2 + 1)) % (max_window * 2 + 1);
     int dz = i / ((max_window * 2 + 1) * (max_window * 2 + 1));
-    fprintf(file, "%+03d %+03d %02d ", dx - max_window, dy - max_window, dz);
-    corr[i].WriteMeasurement(file);
+    fprintf(corr_file, "%+03d %+03d %02d ", dx - max_window, dy - max_window,
+            dz);
+    corr[i].WriteMeasurement(corr_file);
   }
 
-  fclose(file);
+  fclose(corr_file);
 
   return 0;
 }

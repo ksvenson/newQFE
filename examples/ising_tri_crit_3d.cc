@@ -147,6 +147,10 @@ int main(int argc, char* argv[]) {
   QfeMeasReal mag_10;  // magnetization^10
   QfeMeasReal mag_12;  // magnetization^12
   QfeMeasReal action;
+  QfeMeasReal mag_action;    // magnetization * action
+  QfeMeasReal mag_2_action;  // magnetization^2 * action
+  QfeMeasReal mag_3_action;  // magnetization^3 * action
+  QfeMeasReal mag_4_action;  // magnetization^4 * action
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
   int n_corr = (max_window * 2 + 1) * (max_window * 2 + 1) * (max_window + 1);
@@ -230,6 +234,10 @@ int main(int argc, char* argv[]) {
     mag_10.Measure(mag_8.last * m_sq);
     mag_12.Measure(mag_10.last * m_sq);
     action.Measure(field.Action());
+    mag_action.Measure(mag.last * action.last);
+    mag_2_action.Measure(mag_2.last * action.last);
+    mag_3_action.Measure(mag.last * mag_2.last * action.last);
+    mag_4_action.Measure(mag_4.last * action.last);
   }
 
   timer.Stop();
@@ -259,6 +267,18 @@ int main(int argc, char* argv[]) {
          action.AutocorrFront(), action.AutocorrBack());
   fprintf(bulk_file, "action ");
   action.WriteMeasurement(bulk_file);
+
+  fprintf(bulk_file, "mag_action ");
+  mag_action.WriteMeasurement(bulk_file);
+
+  fprintf(bulk_file, "mag^2_action ");
+  mag_2_action.WriteMeasurement(bulk_file);
+
+  fprintf(bulk_file, "mag^3_action ");
+  mag_3_action.WriteMeasurement(bulk_file);
+
+  fprintf(bulk_file, "mag^4_action ");
+  mag_4_action.WriteMeasurement(bulk_file);
 
   printf("mag: %.12e %.12e %.4f %.4f\n", m_mean, m_err, mag.AutocorrFront(),
          mag.AutocorrBack());

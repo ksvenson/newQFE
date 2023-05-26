@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cmath>
 #include <stack>
+#include <unordered_map>
 #include <vector>
 
 #include "lattice.h"
@@ -290,7 +291,7 @@ int QfePhi4::SWUpdate() {
     sw_root[r2] = r;
   }
 
-  std::map<int, int> sw_map;
+  std::unordered_map<int, int> sw_map;
   std::vector<bool> is_flipped;
   // sw_clusters.clear();
   int n_clusters = 0;
@@ -362,7 +363,7 @@ std::vector<double> QfePhi4::MInverse(double m0) {
   cg.compute(M);
   assert(cg.info() == Eigen::Success);
 
-  std::map<int, double> ct_map;
+  std::unordered_map<int, double> ct_map;
   std::vector<double> M_inv(lattice->n_sites);
   for (int s = 0; s < lattice->n_sites; s++) {
     // assume sites with the same weight have the same M_inv

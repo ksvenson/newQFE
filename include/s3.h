@@ -8,8 +8,8 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
-#include <map>
 #include <string>
+#include <unordered_map>
 
 #include "grp_o4.h"
 #include "lattice.h"
@@ -99,9 +99,9 @@ QfeLatticeS3::QfeLatticeS3(int q, int k) {
   // create an unrefined base lattice
   QfeLatticeS3 base_lattice(q);
 
-  std::map<std::string, int> coord_map;
-  std::map<std::string, int> orbit_map;
-  std::map<std::string, int> cell_map;
+  std::unordered_map<std::string, int> coord_map;
+  std::unordered_map<std::string, int> orbit_map;
+  std::unordered_map<std::string, int> cell_map;
   int s_next = 0;
   int c_next = 0;
 
@@ -553,7 +553,7 @@ void QfeLatticeS3::Inflate() {
 /// the site which has position -r. A lattice with a 5-cell base (q = 3) does
 /// not have an antipode for every site.
 void QfeLatticeS3::UpdateAntipodes() {
-  std::map<std::string, int> antipode_map;
+  std::unordered_map<std::string, int> antipode_map;
   for (int s = 0; s < n_sites; s++) {
     // find antipode
     int x_int = int(round(r[s].x() * 1.0e6));

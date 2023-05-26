@@ -3,9 +3,9 @@
 #pragma once
 
 #include <cmath>
-#include <map>
 #include <stack>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "lattice.h"
@@ -225,7 +225,7 @@ int QfeIsing::SWUpdate() {
     sw_root[r2] = r;
   }
 
-  std::map<int, int> sw_map;
+  std::unordered_map<int, int> sw_map;
   std::vector<bool> is_flipped;
   int n_clusters = 0;
   for (int s = 0; s < lattice->n_sites; s++) {

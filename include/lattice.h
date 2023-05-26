@@ -5,10 +5,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <map>
 #include <random>
 #include <stack>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "rng.h"
@@ -815,7 +815,7 @@ void QfeLattice::Refine2D(int n_refine) {
 
   // map from an ordered pair of old sites to an array of new sites running
   // along the old edge between them
-  std::map<std::string, std::vector<int>> edge_sites;
+  std::unordered_map<std::string, std::vector<int>> edge_sites;
 
   int s = n_old_sites;
   for (int l = 0; l < old_links.size(); l++) {

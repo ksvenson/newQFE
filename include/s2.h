@@ -10,8 +10,8 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
-#include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "grp_o3.h"
@@ -108,9 +108,9 @@ QfeLatticeS2::QfeLatticeS2(int q, int k) {
   QfeLatticeS2 base_lattice(q);
 
   // maps to identify vertices, orbits, and faces
-  std::map<std::string, int> coord_map;
-  std::map<std::string, int> orbit_map;
-  std::map<std::string, int> face_map;
+  std::unordered_map<std::string, int> coord_map;
+  std::unordered_map<std::string, int> orbit_map;
+  std::unordered_map<std::string, int> face_map;
 
   // index of next site and face to create
   int s_next = 0;
@@ -526,7 +526,7 @@ void QfeLatticeS2::Inflate() {
 /// the site which has position -r. A lattice with a tetrahedron base (q = 3)
 /// does not have an antipode for every site.
 void QfeLatticeS2::UpdateAntipodes() {
-  std::map<std::string, int> antipode_map;
+  std::unordered_map<std::string, int> antipode_map;
   for (int s = 0; s < n_sites; s++) {
     // find antipode
     Vec3 anti_r = -r[s];
@@ -549,7 +549,7 @@ void QfeLatticeS2::UpdateAntipodes() {
     // print error message if there are any unpaired sites
     fprintf(stderr, "no antipode found for %lu/%d sites\n", antipode_map.size(),
             n_sites);
-    std::map<std::string, int>::iterator it;
+    std::unordered_map<std::string, int>::iterator it;
     for (it = antipode_map.begin(); it != antipode_map.end(); it++) {
       fprintf(stderr, "%04d %s\n", it->second, it->first.c_str());
     }

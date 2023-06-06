@@ -45,11 +45,12 @@ int main(int argc, char* argv[]) {
       {"n_skip", required_argument, 0, 's'},
       {"n_wolff", required_argument, 0, 'w'},
       {"n_metropolis", required_argument, 0, 'e'},
+      {"max_window", required_argument, 0, 'm'},
       {"wall_time", required_argument, 0, 'W'},
       {"data_dir", required_argument, 0, 'D'},
       {0, 0, 0, 0}};
 
-  const char* short_options = "N:a:b:c:d:B:S:h:t:s:w:e:W:D:";
+  const char* short_options = "N:a:b:c:d:B:S:h:t:s:w:e:m:W:D:";
 
   while (true) {
     int o = 0;
@@ -93,6 +94,9 @@ int main(int argc, char* argv[]) {
       case 'e':
         n_metropolis = atoi(optarg);
         break;
+      case 'm':
+        max_window = atoi(optarg);
+        break;
       case 'W':
         wall_time = std::stod(optarg);
         break;
@@ -116,6 +120,7 @@ int main(int argc, char* argv[]) {
   printf("n_skip: %d\n", n_skip);
   printf("n_wolff: %d\n", n_wolff);
   printf("n_metropolis: %d\n", n_metropolis);
+  printf("max_window: %d\n", max_window);
   printf("wall_time: %f\n", wall_time);
   printf("data_dir: %s\n", data_dir.c_str());
 

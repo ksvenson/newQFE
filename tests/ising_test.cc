@@ -23,9 +23,6 @@ int main(int argc, char* argv[]) {
   int N = 64;
   printf("N: %d\n", N);
 
-  double skew = 0.0;
-  printf("skew: %.2f\n", skew);
-
   double beta = 0.25 * log(3.0);
   printf("beta: %.4f\n", beta);
 

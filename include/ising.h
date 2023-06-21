@@ -120,9 +120,7 @@ void QfeIsing::HotStart() {
 }
 
 /// @brief Set all spins to +1
-void QfeIsing::ColdStart() {
-  std::fill(spin.begin(), spin.begin() + lattice->n_sites, 1.0);
-}
+void QfeIsing::ColdStart() { std::fill(spin.begin(), spin.end(), 1.0); }
 
 /// @brief Metropolis update algorithm (i.e. Rosenbluth-Teller)
 /// ref: N. Metropolis, et al., J. Chem. Phys. 21, 1087 (1953).

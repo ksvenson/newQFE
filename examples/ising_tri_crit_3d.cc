@@ -23,6 +23,7 @@ int main(int argc, char* argv[]) {
   double beta = 1.0;
 
   unsigned int seed = 1234u;
+  bool cold_start = false;
   int n_therm = 2000;
   int n_traj = 50000;
   int n_skip = 20;
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
       {"K4", required_argument, 0, 'd'},
       {"beta", required_argument, 0, 'B'},
       {"seed", required_argument, 0, 'S'},
+      {"cold_start", no_argument, 0, 'C'},
       {"n_therm", required_argument, 0, 'h'},
       {"n_traj", required_argument, 0, 't'},
       {"n_skip", required_argument, 0, 's'},
@@ -50,7 +52,7 @@ int main(int argc, char* argv[]) {
       {"data_dir", required_argument, 0, 'D'},
       {0, 0, 0, 0}};
 
-  const char* short_options = "N:a:b:c:d:B:S:h:t:s:w:e:m:W:D:";
+  const char* short_options = "N:a:b:c:d:B:S:C:h:t:s:w:e:m:W:D:";
 
   while (true) {
     int o = 0;
@@ -78,6 +80,9 @@ int main(int argc, char* argv[]) {
         break;
       case 'S':
         seed = atol(optarg);
+        break;
+      case 'C':
+        cold_start = true;
         break;
       case 'h':
         n_therm = atoi(optarg);
@@ -137,7 +142,13 @@ int main(int argc, char* argv[]) {
   }
 
   QfeIsing field(&lattice, beta);
-  field.HotStart();
+  if (cold_start) {
+    printf("cold start\n");
+    field.ColdStart();
+  } else {
+    printf("hot start\n");
+    field.HotStart();
+  }
 
   double vol = double(lattice.n_sites);
 
@@ -158,8 +169,7 @@ int main(int argc, char* argv[]) {
   QfeMeasReal mag_4_action;  // magnetization^4 * action
   QfeMeasReal cluster_size;
   QfeMeasReal accept_metropolis;
-  int n_corr = (max_window * 2 + 1) * (max_window * 2 + 1) * (max_window + 1);
-  std::vector<QfeMeasReal> corr(n_corr);
+  std::vector<QfeMeasReal> corr(lattice.n_sites);
 
   Timer timer;
 
@@ -181,37 +191,51 @@ int main(int argc, char* argv[]) {
     if (n % n_skip || n < n_therm) continue;
 
     // measure correlator values
-    std::vector<int> corr_sum(n_corr, 0);
+    //   std::vector<int> corr_sum(lattice.n_sites, 0);
+    //   for (int s1 = 0; s1 < lattice.n_sites; s1++) {
+    //     int x1 = s1 % N;
+    //     int y1 = (s1 / N) % N;
+    //     int z1 = s1 / (N * N);
+    //     double s1_spin = field.spin[i1];
+    //     for (int s2 = 0; s2 < lattice.n_sites; s2++) {
+    //       int x2 = s2 % N;
+    //       int y2 = (s2 / N) % N;
+    //       int z2 = s2 / (N * N);
+    //       double s2_spin = field.spin[i2];
+
+    //       int dx = (x2 - x1 + N) % N;
+    //       int dy = (y2 - y1 + N) % N;
+    //       int dz = (z2 - z1 + N) % N;
+
+    //       int i_corr = dx + (dy + dz * N) * N;
+    //       if (s1_spin == s2_spin) {
+    //         corr_sum[i_corr]++;
+    //       } else {
+    //         corr_sum[i_corr]--;
+    //       }
+    //     }
+    //   }
+    // }
+
+    std::vector<int> corr_sum(lattice.n_sites, 0);
     for (int i1 = 0; i1 < field.wolff_cluster.size(); i1++) {
       int s1 = field.wolff_cluster[i1];
       int x1 = s1 % N;
       int y1 = (s1 / N) % N;
       int z1 = s1 / (N * N);
-      double s1_spin = field.spin[i1];
+      double s1_spin = field.spin[s1];
       for (int i2 = 0; i2 < field.wolff_cluster.size(); i2++) {
         int s2 = field.wolff_cluster[i2];
         int x2 = s2 % N;
         int y2 = (s2 / N) % N;
         int z2 = s2 / (N * N);
-        double s2_spin = field.spin[i2];
+        double s2_spin = field.spin[s2];
 
-        // dx goes left and right
         int dx = (x2 - x1 + N) % N;
-        if (dx > N / 2) dx = dx - N;
-        if (abs(dx) > max_window) continue;
-
-        // dy goes up and down
         int dy = (y2 - y1 + N) % N;
-        if (dy > N / 2) dy = dy - N;
-        if (abs(dy) > max_window) continue;
-
-        // dz only goes up
         int dz = (z2 - z1 + N) % N;
-        if (dz > max_window) continue;
 
-        int i_corr = dx + max_window +
-                     (2 * max_window + 1) *
-                         (dy + max_window + (2 * max_window + 1) * dz);
+        int i_corr = dx + (dy + dz * N) * N;
         if (s1_spin == s2_spin) {
           corr_sum[i_corr]++;
         } else {
@@ -221,7 +245,7 @@ int main(int argc, char* argv[]) {
     }
 
     double corr_vol = double(field.wolff_cluster.size());
-    for (int i = 0; i < n_corr; i++) {
+    for (int i = 0; i < lattice.n_sites; i++) {
       corr[i].Measure(double(corr_sum[i]) / corr_vol);
     }
 
@@ -340,12 +364,11 @@ int main(int argc, char* argv[]) {
   FILE* corr_file = fopen(corr_path, "w");
   assert(corr_file != nullptr);
 
-  for (int i = 0; i < n_corr; i++) {
-    int dx = i % (max_window * 2 + 1);
-    int dy = (i / (max_window * 2 + 1)) % (max_window * 2 + 1);
-    int dz = i / ((max_window * 2 + 1) * (max_window * 2 + 1));
-    fprintf(corr_file, "%+03d %+03d %02d ", dx - max_window, dy - max_window,
-            dz);
+  for (int i = 0; i < lattice.n_sites; i++) {
+    int dx = i % N;
+    int dy = (i / N) % N;
+    int dz = i / (N * N);
+    fprintf(corr_file, "%+03d %+03d %02d ", dx, dy, dz);
     corr[i].WriteMeasurement(corr_file);
   }
 

@@ -1,5 +1,7 @@
 # Quantum Finite Elements
 
+Fork by Kai Svenson, July 2024
+
 Code for lattice simulations using the quantum finite element method.
 
 We currently have Monte Carlo routines for ising and phi4 field theory,

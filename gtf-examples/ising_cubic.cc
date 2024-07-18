@@ -11,6 +11,8 @@
 //#include "statistics.h"
 #include <iostream>
 #include <fstream>
+//#include <filesystem>
+#include <sys/stat.h>
 
 int main(int argc, char* argv[]) {
 
@@ -30,23 +32,36 @@ int main(int argc, char* argv[]) {
   int n_traj = 50000;
   int n_wolff = 3;
 
-  std::string data_dir = "ising_cubic";
+  std::string data_base = "ising_cubic";
 
   // Command-line Options
   const struct option long_options[] = {
-    { "nx",       required_argument, 0, 'X' },
-    { "ny",       required_argument, 0, 'Y' },
-    { "nz",       required_argument, 0, 'Z' },
-    { "seed",     required_argument, 0, 'S' },
-    { "beta",     required_argument, 0, 'B' },
-    { "n_therm",  required_argument, 0, 'h' },
-    { "n_traj",   required_argument, 0, 't' },
-    { "n_wolff",  required_argument, 0, 'w' },
-    { "data_dir", required_argument, 0, 'd' },
+    { "nx",        required_argument, 0, 'X' },
+    { "ny",        required_argument, 0, 'Y' },
+    { "nz",        required_argument, 0, 'Z' },
+    { "seed",      required_argument, 0, 'S' },
+    { "beta",      required_argument, 0, 'B' },
+    { "k01",       required_argument, 0, 'C' },
+    { "k02",       required_argument, 0, 'D' },
+    { "k03",       required_argument, 0, 'E' },
+    { "k04",       required_argument, 0, 'F' },
+    { "k05",       required_argument, 0, 'G' },
+    { "k06",       required_argument, 0, 'H' },
+    { "k07",       required_argument, 0, 'I' },
+    { "k08",       required_argument, 0, 'J' },
+    { "k09",       required_argument, 0, 'K' },
+    { "k10",       required_argument, 0, 'L' },
+    { "k11",       required_argument, 0, 'M' },
+    { "k12",       required_argument, 0, 'N' },
+    { "k13",       required_argument, 0, 'O' },
+    { "n_therm",   required_argument, 0, 'h' },
+    { "n_traj",    required_argument, 0, 't' },
+    { "n_wolff",   required_argument, 0, 'w' },
+    { "data_base", required_argument, 0, 'd' },
     { 0, 0, 0, 0 }
   };
 
-  const char* short_options = "X:Y:Z:S:B:h:t:w:d:";
+  const char* short_options = "X:Y:Z:S:B:C:D:E:F:G:H:I:J:K:L:M:N:O:h:t:w:d:";
 
   while (true) {
 
@@ -60,13 +75,52 @@ int main(int argc, char* argv[]) {
       case 'Z': Nz = atoi(optarg); break;
       case 'S': seed = atol(optarg); break;
       case 'B': beta = std::stod(optarg); break;
+      case 'C': sc[0] = std::stod(optarg); break;
+      case 'D': sc[1] = std::stod(optarg); break;
+      case 'E': sc[2] = std::stod(optarg); break;
+      case 'F': fcc[0] = std::stod(optarg); break;
+      case 'G': fcc[1] = std::stod(optarg); break;
+      case 'H': fcc[2] = std::stod(optarg); break;
+      case 'I': fcc[3] = std::stod(optarg); break;
+      case 'J': fcc[4] = std::stod(optarg); break;
+      case 'K': fcc[5] = std::stod(optarg); break;
+      case 'L': bcc[0] = std::stod(optarg); break;
+      case 'M': bcc[1] = std::stod(optarg); break;
+      case 'N': bcc[2] = std::stod(optarg); break;
+      case 'O': bcc[3] = std::stod(optarg); break;
       case 'h': n_therm = atoi(optarg); break;
       case 't': n_traj = atoi(optarg); break;
       case 'w': n_wolff = atoi(optarg); break;
-      case 'd': data_dir = optarg; break;
+      case 'd': data_base = optarg; break;
       default: break;
     }
   }
+
+  if (mkdir(data_base.c_str(), 02775) && errno != EEXIST) {
+    perror(data_base.c_str()) ;
+  }
+
+  char tmp_buffer[66] ;
+
+  std::snprintf(tmp_buffer, 66,
+    "%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f_%.2f",
+    sc[0], sc[1], sc[2],
+    fcc[0], fcc[1], fcc[2], fcc[3], fcc[4], fcc[5],
+    bcc[0], bcc[1], bcc[2], bcc[3]) ;
+
+  std::string buffer = tmp_buffer ;
+
+  std::string data_dir = data_base + "/" + buffer ;
+
+  // std::cout << data_dir << std::endl ;
+
+  if (mkdir(data_dir.c_str(), 02775) && errno != EEXIST) {
+    perror(data_dir.c_str()) ;
+  }
+
+  // exit(0) ;
+   
+  // std::filesystem::create_directory(data_dir) ;
 
   std::string param_fname = data_dir + "/"
     + std::to_string(Nx) + "_"

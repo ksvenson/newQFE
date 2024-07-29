@@ -1,18 +1,27 @@
-import numpy as np
 import argparse
+import numpy as np
+import matplotlib.pyplot as plt
 
 KFLAGS = 'CDEFGHIJKLMNO'
-PROGRAM = '/project/affine/newQFE-KS/bin/ising_cubic'
+# PROGRAM = '/project/affine/newQFE-KS/bin/ising_cubic'
+PROGRAM = 'ising_cubic'
 DATA_DIR = './data/'
+FIGS_DIR = './figs/'
 SCRIPT = 'sweep.sh'
 
 # TODO Do not loop over configruations of k that are permutations of each other.
 
+class Stat():
+    def __init__(self, label, axis=None, plot=False):
+        self.label=label
+        self.axis=axis
+        self.plot=plot
+
 class Sweep():
-    headers = ['generation', 'flip metric']
+    headers = [Stat('generation'), Stat('flip_metric')]
     for i in range(13):
-        headers.append(f'k{i} energy')
-    headers.append('magnetization')
+        headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} energy', plot=True))
+    headers.append(Stat('magnetization', axis='Magnetization', plot=True))
 
     script_preamble = ('#!/bin/sh\n'
                        '#SBATCH --job-name=affine_parameter_sweep\n'
@@ -51,13 +60,18 @@ class Sweep():
                 command += ' &'
                 f.write(f'{command}\n')
                 # f.write(f'echo "Completed {count} of {self.beta.size} trials"\n')
-                count += 1
-            f.write('wait\n')
+
+                if count >= 40:
+                    f.write('\nwait\n\n')
+                    count = 1
+                else:
+                    count += 1
+            f.write('\nwait\n\n')
 
     def read_results(self):
         avg = np.empty(self.beta.shape + (len(Sweep.headers),))
         var = np.empty(self.beta.shape + (len(Sweep.headers),))
-        for idx in np.ndindex(self.beta.shape):           
+        for idx in np.ndindex(self.beta.shape):          
             dir = f'{DATA_DIR}/'
             for i, ki in enumerate(self.k):
                 dir += f'{ki[idx[i]]:.2f}_'
@@ -71,49 +85,70 @@ class Sweep():
             var[idx] = data.var(axis=0)
         return avg, var
     
-    def temp_plot(self, fig_dir):
-        pass
+    def energy_plot(self, config_idx):
+        avg, var = self.read_results()
+        avg = avg[config_idx]
+        var = var[config_idx]
+
+        beta_space = self.beta[config_idx]
+        
+        for i, stat in enumerate(Sweep.headers):
+            if not stat.plot:
+                continue
+            plt.figure()
+            plt.plot(beta_space, avg[:, i])
+            plt.xlabel(r'$\beta$')
+            plt.ylabel(stat.axis)
+            plt.savefig(f'{FIGS_DIR}{stat.label}.png')
+            
+            plt.figure()
+            plt.plot(beta_space, var[:, i])
+            plt.xlabel(r'$\beta$')
+            plt.ylabel(f'{stat.axis} Variance')
+            plt.savefig(f'{FIGS_DIR}{stat.label}_var.png')
 
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--make-script', action='store_true', default=False, required=False)
-    parser.add_argument('--read-results', action='store_true', default=False, required=False)
+    parser.add_argument('--script', action='store_true', default=False, required=False)
+    parser.add_argument('--plot', action='store_true', default=False, required=False)
 
     args = parser.parse_args()
     
-    nx = 4
-    ny = 4
-    nz = 4
+    nx = 32
+    ny = 32
+    nz = 32
 
     seed = 1009
 
     ntherm = int(2*1e3)
     ntraj = int(1e3)
 
+    k_samples = 10
+    beta_samples = 10
+
     sc_k = [[0]] * 3
     fcc_k = [[1]] * 5
-    fcc_k.append(np.linspace(0.97, 1.03, 2))
+    fcc_k.append(np.linspace(0.9, 1.1, k_samples))
     bcc_k = [[0]]*4
 
     k = sc_k + fcc_k + bcc_k
     k = [np.array(arr) for arr in k]
 
-    beta_samples = 2
     beta_shape = tuple(len(ki) for ki in k) + (beta_samples,)
     beta = np.empty(beta_shape)
     for idx in np.ndindex(beta_shape):
         # TODO Beta should straddle the critical point, which will be different for each configuration of k
-        beta[idx[:-1]] = np.linspace(0.97, 1.03, beta_shape[-1])
+        beta[idx[:-1]] = np.linspace(0.9, 1.1, beta_shape[-1])
 
     # TODO nwolff will depend on k configuration and beta
-    nwolff = np.full(beta_shape, 5)
+    nwolff = np.full(beta_shape, 100)
 
     sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, nwolff, DATA_DIR, k)
     
-    if args.make_script:
+    if args.script:
         sweep.write_script()
 
-    if args.read_results:
-        sweep.read_results()
+    if args.plot:
+        sweep.energy_plot((0,)*13)

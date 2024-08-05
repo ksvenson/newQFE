@@ -161,22 +161,26 @@ class Sweep():
         avg = avg[plot_idx]
         var = var[plot_idx]
         
-        k_space = self.k[free_idx]
-        beta_space = self.beta[config_idx]
+        # k_space = self.k[free_idx]
+        # beta_space = self.beta[config_idx]
         
         ylabel = rf'$k_{free_idx}$'
-        # if free_idx in SC_IDX:
-        #     ylabel = rf'SC $k_{free_idx}$'
-        # if free_idx in FCC_IDX:
-        #     ylabel = rf'FCC $k_{free_idx - len(SC_IDX)}$'
-        # if free_idx in BCC_IDX:
-        #     ylabel = rf'BCC $k_{free_idx - len(SC_IDX) - len(FCC_IDX)}$'
 
-        for i, stat in enumerate(Sweep.headers):
+        for stat_idx, stat in enumerate(Sweep.headers):
             if not stat.plot:
                 continue
-            plot_avg = pd.DataFrame(avg[..., i], k_space, beta_space)
-            plot_var = pd.DataFrame(var[..., i], k_space, beta_space)
+
+            plot_avg = pd.DataFrame()
+            plot_var = pd.DataFrame()
+            for k_idx, k in enumerate(self.k[free_idx]):
+                beta_idx = list(config_idx)
+                beta_idx[free_idx] = k_idx
+                beta_idx = tuple(beta_idx)
+                plot_avg = pd.concat((plot_avg, pd.DataFrame(avg[[k_idx], :, stat_idx], index=[k], columns=self.beta[beta_idx])))
+                plot_var = pd.concat((plot_var, pd.DataFrame(var[[k_idx], :, stat_idx], index=[k], columns=self.beta[beta_idx])))
+            plot_avg = plot_avg[np.sort(plot_avg.columns)]
+            plot_var = plot_var[np.sort(plot_avg.columns)]
+
             plt.figure()
             sns.heatmap(plot_avg, xticklabels='auto', yticklabels='auto', cbar=True)
             plt.xlabel(r'$\beta$')

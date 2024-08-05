@@ -1,12 +1,14 @@
 import argparse
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import pickle as pkl
 
 KFLAGS = 'CDEFGHIJKLMNO'
-CORES = 40
+CORES_PER_NODE = 40
+BETA_DECIMALS = 6
 
 PROGRAM = 'ising_cubic'
 DEFAULT_BASE_DIR = './sweep'
@@ -33,7 +35,7 @@ class Sweep():
         headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} Energy', plot=True))
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
     
-    def __init__(self, nx, ny, nz, seed, beta, ntherm, ntraj, base_dir, k, sw=False):
+    def __init__(self, nx, ny, nz, seed, beta, ntherm, ntraj, base_dir, k, sw=False, nodes=1):
         assert len(k) == 13
         for i, ki in enumerate(k):
             assert beta.shape[i] == len(ki)
@@ -51,6 +53,7 @@ class Sweep():
 
         self.k = k
         self.sw = sw
+        self.nodes = nodes
 
         if not self.sw:
             self.nwolff = np.full(beta_shape, 100)
@@ -65,6 +68,11 @@ class Sweep():
             sweep.base_dir = base
             sweep.name_files()
             return sweep
+
+    @classmethod
+    def get_idxes(cls, keyword):
+        return [idx for idx, stat in enumerate(cls.headers) if keyword in stat.label]
+
     
     def save(self):
         with open(self.params, 'wb') as f:
@@ -96,13 +104,13 @@ class Sweep():
             f.write(f'#SBATCH --output={self.stdout_fname}\n')
             f.write(f'#SBATCH --error={self.err_fname}\n')
             f.write('\n')
-            f.write('#SBATCH --nodes=1\n')
+            f.write(f'#SBATCH --nodes={self.nodes}\n')
             f.write('#SBATCH --ntasks=1\n')
-            f.write(f'#SBATCH --cpus-per-task={CORES}\n')
+            f.write(f'#SBATCH --cpus-per-task={self.nodes * CORES_PER_NODE}\n')
             f.write('\n\n')
             f.write('module load parallel\n')
             f.write('\n')
-            f.write(f'srun parallel -j {CORES} -a {self.commands}\n')
+            f.write(f'srun parallel -j $SLURM_CPUS_PER_TASK -a {self.commands}\n')
         with open (self.commands, 'w', newline='\n') as f:
             for count, idx in enumerate(np.ndindex(self.beta.shape)):
                 f.write(f'{PROGRAM} -S {self.seed} -d {self.data_dir}')
@@ -128,7 +136,7 @@ class Sweep():
                 dir += f'{ki[idx[i]]:.2f}_'
             dir = dir[:-1]
 
-            fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.6f}_{self.seed}.obs'
+            fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{self.seed}.obs'
             fpath = f'{dir}/{fname}'
             if not os.path.isfile(fpath):
                 print(f'Missing file: {fpath}')
@@ -156,20 +164,32 @@ class Sweep():
         k_space = self.k[free_idx]
         beta_space = self.beta[config_idx]
         
+        ylabel = rf'$k_{free_idx}$'
+        # if free_idx in SC_IDX:
+        #     ylabel = rf'SC $k_{free_idx}$'
+        # if free_idx in FCC_IDX:
+        #     ylabel = rf'FCC $k_{free_idx - len(SC_IDX)}$'
+        # if free_idx in BCC_IDX:
+        #     ylabel = rf'BCC $k_{free_idx - len(SC_IDX) - len(FCC_IDX)}$'
+
         for i, stat in enumerate(Sweep.headers):
             if not stat.plot:
                 continue
+            plot_avg = pd.DataFrame(avg[..., i], k_space, beta_space)
+            plot_var = pd.DataFrame(var[..., i], k_space, beta_space)
             plt.figure()
-            sns.heatmap(avg[..., i], xticklabels=beta_space, yticklabels=k_space, cbar=True)
+            sns.heatmap(plot_avg, xticklabels='auto', yticklabels='auto', cbar=True)
             plt.xlabel(r'$\beta$')
-            plt.ylabel(stat.axis)
-            plt.savefig(f'{self.figs_dir}/{stat.label}.png', **FIG_SAVE_OPTIONS)
+            plt.ylabel(ylabel)
+            plt.title(f'{self.base_dir}\n{stat.axis}')
+            plt.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
             plt.figure()
-            sns.heatmap(var[..., i], xticklabels=beta_space, yticklabels=k_space, cbar=True)
+            sns.heatmap(plot_var, xticklabels='auto', yticklabels='auto', cbar=True)
             plt.xlabel(r'$\beta$')
-            plt.ylabel(stat.axis + ' Variance')
-            plt.savefig(f'{self.figs_dir}/{stat.label}_var.png', **FIG_SAVE_OPTIONS)
+            plt.ylabel(ylabel)
+            plt.title(f'{self.base_dir}\n{stat.axis} Variance')
+            plt.savefig(f'{self.figs_dir}/{stat.label}_var.svg', **FIG_SAVE_OPTIONS)
 
     def refine_nwolff(self):
         if self.sw:
@@ -180,22 +200,44 @@ class Sweep():
             print('Missing data to refine nwolff.')
             return
         avg = res[0]
-        flip_metric = avg[..., 1]
-        self.nwolff = np.clip((self.nwolff // flip_metric).astype(int), 1, 500)
-        self.base_dir = self.base_dir + '_refined'
+        flip_metric = avg[..., Sweep.get_idxes('flip_metric')[0]]
+        self.nwolff = np.clip(((self.nwolff // flip_metric) + 1).astype(int), 1, 500)
+        
+        self.base_dir = self.base_dir + '_rw'
         self.name_files()
         self.create()
 
+    def refine_beta(self, step_size=0.0001, num_steps=10):
+        res = self.read_results()
+        if res is None:
+            print('Missing data to refine beta')
+            return
+        var = res[1]
+        eng_var = var[..., Sweep.get_idxes('energy')]
+        eng_var = var[..., np.array(FCC_IDX)]
 
+        eng_max_var = np.argmax(eng_var, axis=-2, keepdims=True)  # find maximum along temperature axis
+        eng_max_var = np.mean(eng_max_var, axis=-1).astype(int)
+        new_beta = np.empty(self.beta.shape[:-1] + (2*num_steps + 1,))
+        for idx in np.ndindex(self.beta.shape[:-1]):
+            new_beta[idx] = step_size * (np.arange(new_beta.shape[-1]) - num_steps)
+        self.beta = (new_beta + np.take_along_axis(self.beta, eng_max_var, axis=-1)).round(BETA_DECIMALS)
 
+        self.base_dir = self.base_dir + '_rb'
+        self.name_files()
+        self.create()
+
+        
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', required=True)
     parser.add_argument('--init', action='store_true')
     parser.add_argument('--sw', action='store_true')
+    parser.add_argument('--nodes', default=1, type=int)
     parser.add_argument('--analysis', action='store_true')
     parser.add_argument('--refine-nwolff', action='store_true')
-    parser.add_argument('--diagnostic', action='store_true')
+    parser.add_argument('--refine-beta', action='store_true')
+    parser.add_argument('--edit', action='store_true')
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -211,33 +253,37 @@ if __name__ == '__main__':
         ntherm = int(2*1e3)
         ntraj = int(1e3)
 
-        k_samples = 11
-        beta_samples = 21
+        k_step = 0.05
+        beta_step = 0.0001
 
         sc_k = [[0]] * len(SC_IDX)
         fcc_k = [[1]] * (len(FCC_IDX) - 1)
-        fcc_k.append(np.linspace(0.9, 1.1, k_samples).round(2))
+        fcc_k.append(np.arange(0.5, 1.5 + k_step, k_step).round(2))
         bcc_k = [[0]] * len(BCC_IDX)
 
         k = sc_k + fcc_k + bcc_k
         k = [np.array(arr) for arr in k]
 
-        beta_shape = tuple(len(ki) for ki in k) + (beta_samples,)
+        beta_space = np.arange(0.098, 0.106 + beta_step, beta_step).round(BETA_DECIMALS)
+        beta_shape = tuple(len(ki) for ki in k) + beta_space.shape
         beta = np.empty(beta_shape)
-        for idx in np.ndindex(beta_shape):
+        for idx in np.ndindex(beta_shape[:-1]):
             # TODO Beta should straddle the critical point, which will be different for each configuration
-            beta[idx[:-1]] = np.linspace(0.100, 0.110, beta_shape[-1]).round(6)
+            beta[idx] = beta_space
 
-        sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
+        sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw, nodes=args.nodes)
 
-    if args.analysis:
+        print(f'k samples: {fcc_k[-1].size}')
+        print(f'beta samples: {beta_space.size}')
+
+    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit:
         sweep = Sweep.load(args.base)
-        sweep.energy_plot((0,)*13, FCC_IDX[-1])
-
-    if args.refine_nwolff:
-        sweep = Sweep.load(args.base)
-        sweep.refine_nwolff()
-
-    if args.diagnostic:
-        sweep = Sweep.load(args.base)
-        print(sweep.nwolff)
+        if args.analysis:
+            sweep.energy_plot((0,)*13, FCC_IDX[-1])
+        if args.refine_nwolff:
+            sweep.refine_nwolff()
+        if args.refine_beta:
+            sweep.refine_beta()
+        if args.edit:
+            sweep.nodes = args.nodes
+            sweep.save()

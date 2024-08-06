@@ -160,40 +160,38 @@ class Sweep():
 
         avg = avg[plot_idx]
         var = var[plot_idx]
-        
-        # k_space = self.k[free_idx]
-        # beta_space = self.beta[config_idx]
+        beta = self.beta[plot_idx]
+        beta_union = np.array([])
+        for beta_space in beta:
+            beta_union = np.union1d(beta_union, beta_space)        
+        k_space = self.k[free_idx]
         
         ylabel = rf'$k_{free_idx}$'
-
         for stat_idx, stat in enumerate(Sweep.headers):
             if not stat.plot:
                 continue
 
-            plot_avg = pd.DataFrame()
-            plot_var = pd.DataFrame()
+            plot_avg = np.full((len(k_space), len(beta_union)), np.nan)
+            plot_var = np.full((len(k_space), len(beta_union)), np.nan)
             for k_idx, k in enumerate(self.k[free_idx]):
-                beta_idx = list(config_idx)
-                beta_idx[free_idx] = k_idx
-                beta_idx = tuple(beta_idx)
-                plot_avg = pd.concat((plot_avg, pd.DataFrame(avg[[k_idx], :, stat_idx], index=[k], columns=self.beta[beta_idx])))
-                plot_var = pd.concat((plot_var, pd.DataFrame(var[[k_idx], :, stat_idx], index=[k], columns=self.beta[beta_idx])))
-            plot_avg = plot_avg[np.sort(plot_avg.columns)]
-            plot_var = plot_var[np.sort(plot_avg.columns)]
+                plot_avg[k_idx, np.isin(beta_union, beta[k_idx])] = avg[k_idx, :, stat_idx]
+                plot_var[k_idx, np.isin(beta_union, beta[k_idx])] = var[k_idx, :, stat_idx]
 
-            plt.figure()
-            sns.heatmap(plot_avg, xticklabels='auto', yticklabels='auto', cbar=True)
-            plt.xlabel(r'$\beta$')
-            plt.ylabel(ylabel)
-            plt.title(f'{self.base_dir}\n{stat.axis}')
-            plt.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
+            fig, ax = plt.subplots()
+            pcm = ax.pcolormesh(beta_union, k_space, plot_avg, shading='nearest')
+            fig.colorbar(pcm)
+            ax.set_xlabel(r'$\beta$')
+            ax.set_ylabel(ylabel)
+            ax.set_title(f'{self.base_dir}\n{stat.axis}')
+            fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
-            plt.figure()
-            sns.heatmap(plot_var, xticklabels='auto', yticklabels='auto', cbar=True)
-            plt.xlabel(r'$\beta$')
-            plt.ylabel(ylabel)
-            plt.title(f'{self.base_dir}\n{stat.axis} Variance')
-            plt.savefig(f'{self.figs_dir}/{stat.label}_var.svg', **FIG_SAVE_OPTIONS)
+            fig, ax = plt.subplots()
+            pcm = ax.pcolormesh(beta_union, k_space, plot_var, shading='nearest')
+            fig.colorbar(pcm)
+            ax.set_xlabel(r'$\beta$')
+            ax.set_ylabel(ylabel)
+            ax.set_title(f'{self.base_dir}\n{stat.axis} Variance')
+            fig.savefig(f'{self.figs_dir}/{stat.label}_var.svg', **FIG_SAVE_OPTIONS)
 
     def refine_nwolff(self):
         if self.sw:

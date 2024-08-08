@@ -1,8 +1,6 @@
 import argparse
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 import pickle as pkl
 
@@ -20,8 +18,6 @@ BCC_IDX = (9, 10, 11, 12)
 FIG_SAVE_OPTIONS = {'bbox_inches': 'tight'}
 
 # TODO Do not loop over configruations of k that are permutations of each other.
-
-
 
 class Stat():
     def __init__(self, label, axis=None, plot=False):
@@ -53,6 +49,7 @@ class Sweep():
 
         self.k = k
         self.sw = sw
+        # TODO: Haven't written the batch file to use multiple nodes yet.
         self.nodes = nodes
 
         if not self.sw:
@@ -60,7 +57,6 @@ class Sweep():
         
         self.create()
             
-
     @classmethod
     def load(cls, base):
         with open(base + '/params.pkl', 'rb') as f:
@@ -73,7 +69,6 @@ class Sweep():
     def get_idxes(cls, keyword):
         return [idx for idx, stat in enumerate(cls.headers) if keyword in stat.label]
 
-    
     def save(self):
         with open(self.params, 'wb') as f:
             pkl.dump(self, f)
@@ -104,13 +99,13 @@ class Sweep():
             f.write(f'#SBATCH --output={self.stdout_fname}\n')
             f.write(f'#SBATCH --error={self.err_fname}\n')
             f.write('\n')
-            f.write(f'#SBATCH --nodes={self.nodes}\n')
-            f.write('#SBATCH --ntasks=1\n')
-            f.write(f'#SBATCH --cpus-per-task={self.nodes * CORES_PER_NODE}\n')
+            f.write(f'#SBATCH --nodes=1\n')
+            f.write(f'#SBATCH --tasks-per-node=1\n')
+            f.write(f'#SBATCH --cpus-per-task={CORES_PER_NODE}')
             f.write('\n\n')
             f.write('module load parallel\n')
             f.write('\n')
-            f.write(f'srun parallel -j $SLURM_CPUS_PER_TASK -a {self.commands}\n')
+            f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} parallel -j {CORES_PER_NODE} -a {self.commands}\n')
         with open (self.commands, 'w', newline='\n') as f:
             for count, idx in enumerate(np.ndindex(self.beta.shape)):
                 f.write(f'{PROGRAM} -S {self.seed} -d {self.data_dir}')
@@ -124,7 +119,7 @@ class Sweep():
                 else:
                     f.write(f' -w {self.nwolff[idx]}')
                 f.write(' ; ')
-                f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date)"')
+                f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
                 f.write(f'\n')
 
     def read_results(self):
@@ -165,20 +160,21 @@ class Sweep():
         for beta_space in beta:
             beta_union = np.union1d(beta_union, beta_space)        
         k_space = self.k[free_idx]
-        
+
+        plot_avg = np.full((avg.shape[0], len(beta_union), avg.shape[-1]), np.nan)
+        plot_var = np.full((var.shape[0], len(beta_union), var.shape[-1]), np.nan)
+        for k_idx, k_row in enumerate(plot_avg):
+            k_row[np.isin(beta_union, beta[k_idx])] = avg[k_idx, :]
+        for k_idx, k_row in enumerate(plot_var):
+            k_row[np.isin(beta_union, beta[k_idx])] = var[k_idx, :]
+
         ylabel = rf'$k_{free_idx}$'
         for stat_idx, stat in enumerate(Sweep.headers):
             if not stat.plot:
                 continue
 
-            plot_avg = np.full((len(k_space), len(beta_union)), np.nan)
-            plot_var = np.full((len(k_space), len(beta_union)), np.nan)
-            for k_idx, k in enumerate(self.k[free_idx]):
-                plot_avg[k_idx, np.isin(beta_union, beta[k_idx])] = avg[k_idx, :, stat_idx]
-                plot_var[k_idx, np.isin(beta_union, beta[k_idx])] = var[k_idx, :, stat_idx]
-
             fig, ax = plt.subplots()
-            pcm = ax.pcolormesh(beta_union, k_space, plot_avg, shading='nearest')
+            pcm = ax.pcolormesh(beta_union, k_space, plot_avg[..., stat_idx], shading='nearest')
             fig.colorbar(pcm)
             ax.set_xlabel(r'$\beta$')
             ax.set_ylabel(ylabel)
@@ -186,7 +182,7 @@ class Sweep():
             fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
             fig, ax = plt.subplots()
-            pcm = ax.pcolormesh(beta_union, k_space, plot_var, shading='nearest')
+            pcm = ax.pcolormesh(beta_union, k_space, plot_var[..., stat_idx], shading='nearest')
             fig.colorbar(pcm)
             ax.set_xlabel(r'$\beta$')
             ax.set_ylabel(ylabel)
@@ -203,13 +199,13 @@ class Sweep():
             return
         avg = res[0]
         flip_metric = avg[..., Sweep.get_idxes('flip_metric')[0]]
-        self.nwolff = np.clip(((self.nwolff // flip_metric) + 1).astype(int), 1, 500)
+        self.nwolff = np.clip(((self.nwolff // flip_metric) + 1).astype(int), 5, self.nx * self.ny * self.nz)
         
         self.base_dir = self.base_dir + '_rw'
         self.name_files()
         self.create()
 
-    def refine_beta(self, step_size=0.0001, num_steps=10):
+    def refine_beta(self, step_size=0.0001, num_steps=20):
         res = self.read_results()
         if res is None:
             print('Missing data to refine beta')
@@ -219,27 +215,79 @@ class Sweep():
         eng_var = var[..., np.array(FCC_IDX)]
 
         eng_max_var = np.argmax(eng_var, axis=-2, keepdims=True)  # find maximum along temperature axis
-        eng_max_var = np.mean(eng_max_var, axis=-1).astype(int)
+        eng_max_var = np.mean(eng_max_var, axis=-1).astype(int)  # average over all directions
         new_beta = np.empty(self.beta.shape[:-1] + (2*num_steps + 1,))
-        for idx in np.ndindex(self.beta.shape[:-1]):
-            new_beta[idx] = step_size * (np.arange(new_beta.shape[-1]) - num_steps)
+        new_beta[...] = step_size * (np.arange(new_beta.shape[-1]) - num_steps)
         self.beta = (new_beta + np.take_along_axis(self.beta, eng_max_var, axis=-1)).round(BETA_DECIMALS)
 
         self.base_dir = self.base_dir + '_rb'
         self.name_files()
         self.create()
 
-        
+
+def comp_sweeps(wolff, sw, config_idx, free_idx, dir):
+    assert not wolff.sw
+    assert sw.sw
+
+    res_wolff = wolff.read_results()
+    if res_wolff is None:
+        print('Can not compare sweeps. Missing data in wolff sweep.')
+        return
+    avg_wolff, var_wolff = res_wolff
+
+    res_sw = sw.read_results()
+    if res_sw is None:
+        print('Can not compare sweeps. Missing data in sw sweep.')
+        return
+    avg_sw, var_sw = res_sw
+
+    plot_idx = list(config_idx) + [slice(None)]
+    plot_idx[free_idx] = slice(None)
+    plot_idx = tuple(plot_idx)
+
+    avg = avg_wolff[plot_idx] - avg_sw[plot_idx]
+    var = var_wolff[plot_idx]/wolff.ntraj + var_sw[plot_idx]/sw.ntraj
+    sig = avg / np.sqrt(var)
+
+    beta = wolff.beta[plot_idx]
+    beta_union = np.array([])
+    for beta_space in beta:
+        beta_union = np.union1d(beta_union, beta_space)        
+    k_space = wolff.k[free_idx]
+
+    plot_sig = np.full((sig.shape[0], len(beta_union), sig.shape[-1]), np.nan)
+    for k_idx, k_row in enumerate(plot_sig):
+        k_row[np.isin(beta_union, beta[k_idx])] = sig[k_idx, :]
+
+    ylabel = rf'$k_{free_idx}$'
+    for stat_idx, stat in enumerate(Sweep.headers):
+        if not stat.plot:
+            continue
+
+        fig, ax = plt.subplots()
+        pcm = ax.pcolormesh(beta_union, k_space, plot_sig[..., stat_idx], shading='nearest')
+        fig.colorbar(pcm)
+        ax.set_xlabel(r'$\beta$')
+        ax.set_ylabel(ylabel)
+        ax.set_title(f'{stat.axis}')
+        fig.savefig(f'{dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', required=True)
-    parser.add_argument('--init', action='store_true')
+    
     parser.add_argument('--sw', action='store_true')
     parser.add_argument('--nodes', default=1, type=int)
+    parser.add_argument('--ntraj', default=int(1e3), type=int)
+    parser.add_argument('--beta-step', default=0.0001, type=float)
+    parser.add_argument('--num-beta-steps', default=20, type=float)
+
+    parser.add_argument('--init', action='store_true')
     parser.add_argument('--analysis', action='store_true')
     parser.add_argument('--refine-nwolff', action='store_true')
     parser.add_argument('--refine-beta', action='store_true')
     parser.add_argument('--edit', action='store_true')
+    parser.add_argument('--compare', nargs=3, default=None)
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -253,10 +301,10 @@ if __name__ == '__main__':
         seed = 1009
 
         ntherm = int(2*1e3)
-        ntraj = int(1e3)
+        ntraj = args.ntraj
 
         k_step = 0.05
-        beta_step = 0.0001
+        beta_step = args.beta_step
 
         sc_k = [[0]] * len(SC_IDX)
         fcc_k = [[1]] * (len(FCC_IDX) - 1)
@@ -269,14 +317,12 @@ if __name__ == '__main__':
         beta_space = np.arange(0.098, 0.106 + beta_step, beta_step).round(BETA_DECIMALS)
         beta_shape = tuple(len(ki) for ki in k) + beta_space.shape
         beta = np.empty(beta_shape)
-        for idx in np.ndindex(beta_shape[:-1]):
-            # TODO Beta should straddle the critical point, which will be different for each configuration
-            beta[idx] = beta_space
-
+        # Ideally, beta should straddle the critical point, and thus be unique for each configuration.
+        # However, when we initialize the sweep, we don't exactly know where the critical point is.
+        # Using `refine_beta` to create a new sweep that only samples around criticality.
+        beta[...] = beta_space
+        
         sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw, nodes=args.nodes)
-
-        print(f'k samples: {fcc_k[-1].size}')
-        print(f'beta samples: {beta_space.size}')
 
     if args.analysis or args.refine_nwolff or args.refine_beta or args.edit:
         sweep = Sweep.load(args.base)
@@ -285,7 +331,16 @@ if __name__ == '__main__':
         if args.refine_nwolff:
             sweep.refine_nwolff()
         if args.refine_beta:
-            sweep.refine_beta()
+            sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
         if args.edit:
             sweep.nodes = args.nodes
-            sweep.save()
+            sweep.ntraj = args.ntraj
+            sweep.create()
+    
+    if args.compare is not None:
+        for idx in range(len(args.compare)):
+            if args.compare[idx].endswith('/'):
+                args.compare[idx] = args.compare[idx][-1]
+        wolff = Sweep.load(args.compare[0])
+        sw = Sweep.load(args.compare[1])
+        comp_sweeps(wolff, sw, (0,)*13, FCC_IDX[-1], args.compare[2])

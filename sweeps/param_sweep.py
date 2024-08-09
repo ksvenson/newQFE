@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+import scipy as sp
 import matplotlib.pyplot as plt
 import os
 import pickle as pkl
@@ -9,7 +10,6 @@ CORES_PER_NODE = 40
 BETA_DECIMALS = 6
 
 PROGRAM = 'ising_cubic'
-DEFAULT_BASE_DIR = './sweep'
 
 SC_IDX = (0, 1, 2)
 FCC_IDX = (3, 4, 5, 6, 7, 8)
@@ -122,32 +122,30 @@ class Sweep():
                 f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
                 f.write(f'\n')
 
-    def read_results(self):
+    def get_data_dir(self, idx):
+        dir = f'{self.data_dir}/'
+        for i, ki in enumerate(self.k):
+            dir += f'{ki[idx[i]]:.2f}_'
+        dir = dir[:-1]
+
+        fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{self.seed}.obs'
+        path = f'{dir}/{fname}'
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f'Missing data file: {path}')
+        return f'{dir}/{fname}'
+
+    def read_avg_var(self):
         avg = np.empty(self.beta.shape + (len(Sweep.headers),))
         var = np.empty(self.beta.shape + (len(Sweep.headers),))
         for idx in np.ndindex(self.beta.shape):          
-            dir = f'{self.data_dir}/'
-            for i, ki in enumerate(self.k):
-                dir += f'{ki[idx[i]]:.2f}_'
-            dir = dir[:-1]
-
-            fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{self.seed}.obs'
-            fpath = f'{dir}/{fname}'
-            if not os.path.isfile(fpath):
-                print(f'Missing file: {fpath}')
-                return None
-            else:
-                data = np.genfromtxt(fpath, delimiter=' ')
-                avg[idx] = data.mean(axis=0)
-                var[idx] = data.var(axis=0)
+            path = self.get_data_dir(idx)
+            data = np.genfromtxt(path, delimiter=' ')
+            avg[idx] = data.mean(axis=0)
+            var[idx] = data.var(axis=0)
         return avg, var
     
     def energy_plot(self, config_idx, free_idx):
-        res = self.read_results()
-        if res is None:
-            print('Can not make plots. Missing data.')
-            return
-        avg, var = res
+        avg, var = self.read_avg_var()
 
         plot_idx = list(config_idx) + [slice(None)]
         plot_idx[free_idx] = slice(None)
@@ -164,9 +162,9 @@ class Sweep():
         plot_avg = np.full((avg.shape[0], len(beta_union), avg.shape[-1]), np.nan)
         plot_var = np.full((var.shape[0], len(beta_union), var.shape[-1]), np.nan)
         for k_idx, k_row in enumerate(plot_avg):
-            k_row[np.isin(beta_union, beta[k_idx])] = avg[k_idx, :]
+            plot_avg[k_idx, np.isin(beta_union, beta[k_idx])] = avg[k_idx, :]
         for k_idx, k_row in enumerate(plot_var):
-            k_row[np.isin(beta_union, beta[k_idx])] = var[k_idx, :]
+            plot_var[k_idx, np.isin(beta_union, beta[k_idx])] = var[k_idx, :]
 
         ylabel = rf'$k_{free_idx}$'
         for stat_idx, stat in enumerate(Sweep.headers):
@@ -193,11 +191,7 @@ class Sweep():
         if self.sw:
             print('Sweep uses the Swedsen-Wang algorithm. Can not refine nwolff.')
             return
-        res = self.read_results()
-        if res is None:
-            print('Missing data to refine nwolff.')
-            return
-        avg = res[0]
+        avg, var = self.read_avg_var()
         flip_metric = avg[..., Sweep.get_idxes('flip_metric')[0]]
         self.nwolff = np.clip(((self.nwolff // flip_metric) + 1).astype(int), 5, self.nx * self.ny * self.nz)
         
@@ -206,11 +200,7 @@ class Sweep():
         self.create()
 
     def refine_beta(self, step_size=0.0001, num_steps=20):
-        res = self.read_results()
-        if res is None:
-            print('Missing data to refine beta')
-            return
-        var = res[1]
+        avg, var = self.read_avg_var()
         eng_var = var[..., Sweep.get_idxes('energy')]
         eng_var = var[..., np.array(FCC_IDX)]
 
@@ -224,6 +214,34 @@ class Sweep():
         self.name_files()
         self.create()
 
+    def multi_hist(self, tol):
+        sweep_log_Z = np.empty(self.beta.shape)
+        for config_idx in np.ndindex(self.beta.shape[:-1]):
+            beta_space = self.beta[config_idx]
+            log_Z = np.ones(beta_space.shape)
+            energy = np.empty(beta_space.shape + (self.ntraj,))
+            for beta_idx, beta_arr in enumerate(energy):
+                path = self.get_data_dir(config_idx + (beta_idx,))
+                raw = np.genfromtxt(path, delimiter=' ')
+                energy[beta_idx] = np.sum(-1 * raw[Sweep.get_idxes('energy')], axis=-1)  # number in file is negative energy
+            
+            # Iteration do-while loop.
+            # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
+            while True:
+                beta_diff = np.add.outer(beta_space, -1 * beta_space)
+                exponent = np.multiply.outer(energy, beta_diff)
+                new_log_Z = exponent - log_Z
+                new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
+                new_log_Z = sp.special.logsumexp(new_log_Z, axis=0)
+                new_log_Z = sp.special.logsumexp(new_log_Z, axis=0)
+                new_log_Z -= np.log(self.ntraj)
+
+                convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+                if convergence_metric < tol:
+                    break
+            sweep_log_Z[config_idx] = log_Z
+        return sweep_log_Z
+            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

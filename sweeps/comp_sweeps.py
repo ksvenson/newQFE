@@ -15,17 +15,9 @@ def comp_sweeps(wolff, sw, config_idx, free_idx, dir):
     assert not wolff.sw
     assert sw.sw
 
-    res_wolff = wolff.read_results()
-    if res_wolff is None:
-        print('Can not compare sweeps. Missing data in wolff sweep.')
-        return
-    avg_wolff, var_wolff = res_wolff
+    avg_wolff, var_wolff = wolff.read_avg_var()
 
-    res_sw = sw.read_results()
-    if res_sw is None:
-        print('Can not compare sweeps. Missing data in sw sweep.')
-        return
-    avg_sw, var_sw = res_sw
+    avg_sw, var_sw = sw.read_avg_var()
 
     plot_idx = list(config_idx) + [slice(None)]
     plot_idx[free_idx] = slice(None)

@@ -158,39 +158,37 @@ class Sweep():
             stagger[idx, np.isin(beta_union, beta[idx])] = data[idx]
         return stagger
 
-    def energy_plot(self, config_idx, free_idx):
-        avg, var = self.read_avg_var()
-
-        plot_idx = list(config_idx) + [Sweep.plot_mask]
+    def obs_plot(self, obs, stats, config_idx, free_idx, k_space, beta_space):
+        plot_idx = list(config_idx) + [slice(None)]
         plot_idx[free_idx] = slice(None)
         plot_idx = tuple(plot_idx)
 
-        avg = avg[plot_idx]
-        var = var[plot_idx]
-        k_space = self.k[free_idx]
-        beta = self.beta[plot_idx]
-        beta_union = np.unique(beta)
+        beta_union = np.unique(beta_space[plot_idx])
+        plot_obs = Sweep.stagger_data(obs[plot_idx], beta_space[plot_idx], beta_union)
 
-        plot_avg = Sweep.stagger_data(avg, beta, beta_union)
-        plot_var = Sweep.stagger_data(var, beta, beta_union)
-
-        ylabel = rf'$k_{free_idx}$'
-        for stat_idx, stat in enumerate(Sweep.headers):
+        for stat_idx, stat in enumerate(stats):
+            if not stat.plot:
+                continue
             fig, ax = plt.subplots()
-            pcm = ax.pcolormesh(beta_union, k_space, plot_avg[..., stat_idx], shading='nearest')
+            pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
             fig.colorbar(pcm)
             ax.set_xlabel(r'$\beta$')
-            ax.set_ylabel(ylabel)
+            ax.set_ylabel(rf'$k_{free_idx}$')
             ax.set_title(f'{self.base_dir}\n{stat.axis}')
             fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
-            fig, ax = plt.subplots()
-            pcm = ax.pcolormesh(beta_union, k_space, plot_var[..., stat_idx], shading='nearest')
-            fig.colorbar(pcm)
-            ax.set_xlabel(r'$\beta$')
-            ax.set_ylabel(ylabel)
-            ax.set_title(f'{self.base_dir}\n{stat.axis} Variance')
-            fig.savefig(f'{self.figs_dir}/{stat.label}_var.svg', **FIG_SAVE_OPTIONS)
+    def raw_obs_plot(self, config_idx, free_idx):
+        avg, var = self.read_avg_var()
+        self.obs_plot(avg, Sweep.headers, config_idx, free_idx, self.k[free_idx], self.beta)
+
+        var_stats = []
+        for avg_stat in Sweep.headers:
+            var_label = avg_stat.label + '_var'
+            var_axis = None
+            if avg_stat.axis is not None:
+                var_axis = avg_stat.axis + ' Variance'
+            var_stats.append(Stat(var_label, var_axis, plot=avg_stat.plot))
+        self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], self.beta)
 
     def refine_nwolff(self):
         if self.sw:
@@ -262,13 +260,7 @@ class Sweep():
 
             observables[config_idx] = np.exp(observables) + offset
         return observables
-            
 
-
-
-
-
-            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -324,7 +316,7 @@ if __name__ == '__main__':
     if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist:
         sweep = Sweep.load(args.base)
         if args.analysis:
-            sweep.energy_plot((0,)*13, FCC_IDX[-1])
+            sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
         if args.refine_nwolff:
             sweep.refine_nwolff()
         if args.refine_beta:

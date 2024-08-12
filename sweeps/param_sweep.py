@@ -30,8 +30,9 @@ class Sweep():
     for i in range(13):
         headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} Energy', plot=True))
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
+    plot_mask = np.array([stat.plot for stat in headers])
     
-    def __init__(self, nx, ny, nz, seed, beta, ntherm, ntraj, base_dir, k, sw=False, nodes=1):
+    def __init__(self, nx, ny, nz, seed, beta, ntherm, ntraj, base_dir, k, sw=False):
         assert len(k) == 13
         for i, ki in enumerate(k):
             assert beta.shape[i] == len(ki)
@@ -49,8 +50,6 @@ class Sweep():
 
         self.k = k
         self.sw = sw
-        # TODO: Haven't written the batch file to use multiple nodes yet.
-        self.nodes = nodes
 
         if not self.sw:
             self.nwolff = np.full(beta_shape, 100)
@@ -101,8 +100,8 @@ class Sweep():
             f.write('\n')
             f.write(f'#SBATCH --nodes=1\n')
             f.write(f'#SBATCH --tasks-per-node=1\n')
-            f.write(f'#SBATCH --cpus-per-task={CORES_PER_NODE}')
-            f.write('\n\n')
+            f.write(f'#SBATCH --cpus-per-task={CORES_PER_NODE}\n')
+            f.write('\n')
             f.write('module load parallel\n')
             f.write('\n')
             f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} parallel -j {CORES_PER_NODE} -a {self.commands}\n')
@@ -144,33 +143,39 @@ class Sweep():
             var[idx] = data.var(axis=0)
         return avg, var
     
+    @staticmethod
+    def stagger_data(data, beta, beta_union):
+        """
+        Each configuration has a unique range over beta.
+        This method expands the beta dimension of the `data` array to capute the union of all the unique beta spaces.
+        The new entries are filled with `np.nan`.
+        `data` should have >=3 dimensions. The first dimenions are for the configruations of k.
+        The second to last dimension is for beta.
+        The last dimension is an array of observables.
+        """
+        stagger = np.full(data.shape[:-2] + (len(beta_union), data.shape[-1]), np.nan)
+        for idx in np.ndindex(stagger.shape[:-2]):
+            stagger[idx, np.isin(beta_union, beta[idx])] = data[idx]
+        return stagger
+
     def energy_plot(self, config_idx, free_idx):
         avg, var = self.read_avg_var()
 
-        plot_idx = list(config_idx) + [slice(None)]
+        plot_idx = list(config_idx) + [Sweep.plot_mask]
         plot_idx[free_idx] = slice(None)
         plot_idx = tuple(plot_idx)
 
         avg = avg[plot_idx]
         var = var[plot_idx]
-        beta = self.beta[plot_idx]
-        beta_union = np.array([])
-        for beta_space in beta:
-            beta_union = np.union1d(beta_union, beta_space)        
         k_space = self.k[free_idx]
+        beta = self.beta[plot_idx]
+        beta_union = np.unique(beta)
 
-        plot_avg = np.full((avg.shape[0], len(beta_union), avg.shape[-1]), np.nan)
-        plot_var = np.full((var.shape[0], len(beta_union), var.shape[-1]), np.nan)
-        for k_idx, k_row in enumerate(plot_avg):
-            plot_avg[k_idx, np.isin(beta_union, beta[k_idx])] = avg[k_idx, :]
-        for k_idx, k_row in enumerate(plot_var):
-            plot_var[k_idx, np.isin(beta_union, beta[k_idx])] = var[k_idx, :]
+        plot_avg = Sweep.stagger_data(avg, beta, beta_union)
+        plot_var = Sweep.stagger_data(var, beta, beta_union)
 
         ylabel = rf'$k_{free_idx}$'
         for stat_idx, stat in enumerate(Sweep.headers):
-            if not stat.plot:
-                continue
-
             fig, ax = plt.subplots()
             pcm = ax.pcolormesh(beta_union, k_space, plot_avg[..., stat_idx], shading='nearest')
             fig.colorbar(pcm)
@@ -214,22 +219,23 @@ class Sweep():
         self.name_files()
         self.create()
 
-    def multi_hist(self, tol):
-        sweep_log_Z = np.empty(self.beta.shape)
+    def multi_hist(self, interp_beta, tol=1e-5):
+        observables = np.empty(self.beta.shape[:-1] + (np.count_nonzero(Sweep.plot_mask)))
         for config_idx in np.ndindex(self.beta.shape[:-1]):
             beta_space = self.beta[config_idx]
-            log_Z = np.ones(beta_space.shape)
-            energy = np.empty(beta_space.shape + (self.ntraj,))
-            for beta_idx, beta_arr in enumerate(energy):
+            k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
+            log_Z = np.ones(beta_space.shape)  # intialize Z with all ones
+            raw = np.empty(beta_space.shape + (self.ntraj, len(Sweep.headers)))
+            for beta_idx in range(beta_space.shape[0]):
                 path = self.get_data_dir(config_idx + (beta_idx,))
-                raw = np.genfromtxt(path, delimiter=' ')
-                energy[beta_idx] = np.sum(-1 * raw[Sweep.get_idxes('energy')], axis=-1)  # number in file is negative energy
+                raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
+            energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number in file is sum(s_i * s_{i+1})
             
-            # Iteration do-while loop.
             # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
+            beta_diff = np.add.outer(beta_space, -1 * beta_space)
+            exponent = np.multiply.outer(energy, beta_diff)
+            # Iteration do-while loop.
             while True:
-                beta_diff = np.add.outer(beta_space, -1 * beta_space)
-                exponent = np.multiply.outer(energy, beta_diff)
                 new_log_Z = exponent - log_Z
                 new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
                 new_log_Z = sp.special.logsumexp(new_log_Z, axis=0)
@@ -239,8 +245,29 @@ class Sweep():
                 convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
                 if convergence_metric < tol:
                     break
-            sweep_log_Z[config_idx] = log_Z
-        return sweep_log_Z
+
+            # Preparing observables
+            observables[config_idx] = raw[..., Sweep.plot_mask]
+            offset = observables[config_idx].min(axis=1, keepdims=True) - 1
+            observables[config_idx] -= offset  # Ensure we only work with non-negative numbers
+            observables[config_idx] = np.log(observables[config_idx])  # We calculate the log of the expectation value.
+
+            # Now we interpolate using Equation 8.39.
+            beta_diff = np.add.outer(interp_beta, -1 * beta_space)
+            exponent = np.multiply.outer(energy, beta_diff)
+            observables[config_idx] = observables[config_idx] - sp.special.logsumexp(exponent - log_Z, axis=-1)
+            observables[config_idx] = sp.special.logsumexp(observables[config_idx], axis=0)
+            observables[config_idx] = sp.special.logsumexp(observables[config_idx], axis=0)
+            observables[config_idx] -= log_Z + np.log(self.ntraj)
+
+            observables[config_idx] = np.exp(observables) + offset
+        return observables
+            
+
+
+
+
+
             
 
 if __name__ == '__main__':
@@ -248,7 +275,6 @@ if __name__ == '__main__':
     parser.add_argument('--base', required=True)
     
     parser.add_argument('--sw', action='store_true')
-    parser.add_argument('--nodes', default=1, type=int)
     parser.add_argument('--ntraj', default=int(1e3), type=int)
     parser.add_argument('--beta-step', default=0.0001, type=float)
     parser.add_argument('--num-beta-steps', default=20, type=float)
@@ -258,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--refine-nwolff', action='store_true')
     parser.add_argument('--refine-beta', action='store_true')
     parser.add_argument('--edit', action='store_true')
+    parser.add_argument('--multi-hist', action='store_true')
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -292,9 +319,9 @@ if __name__ == '__main__':
         # Using `refine_beta` to create a new sweep that only samples around criticality.
         beta[...] = beta_space
         
-        sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw, nodes=args.nodes)
+        sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
-    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit:
+    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist:
         sweep = Sweep.load(args.base)
         if args.analysis:
             sweep.energy_plot((0,)*13, FCC_IDX[-1])
@@ -303,6 +330,7 @@ if __name__ == '__main__':
         if args.refine_beta:
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
         if args.edit:
-            sweep.nodes = args.nodes
             sweep.ntraj = args.ntraj
             sweep.create()
+        if args.multi_hist:
+            sweep.multi_hist(sweep.beta)

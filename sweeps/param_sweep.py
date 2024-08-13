@@ -190,6 +190,16 @@ class Sweep():
             var_stats.append(Stat(var_label, var_axis, plot=avg_stat.plot))
         self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], self.beta)
 
+    def multi_hist_obs_plot(self, config_idx, free_idx, interp_beta):
+        obs = self.multi_hist(interp_beta)
+        stats = []
+        for raw_stat in Sweep.headers:
+            if raw_stat.plot:
+                multi_hist_label = 'multi_hist_' + raw_stat.label
+                multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
+                stats.append[Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot)]
+        self.obs_plot(obs, stats, config_idx, free_idx, self.k[free_idx], interp_beta)
+
     def refine_nwolff(self):
         if self.sw:
             print('Sweep uses the Swedsen-Wang algorithm. Can not refine nwolff.')
@@ -217,9 +227,10 @@ class Sweep():
         self.name_files()
         self.create()
 
-    def multi_hist(self, interp_beta, tol=1e-5):
-        observables = np.empty(self.beta.shape[:-1] + (np.count_nonzero(Sweep.plot_mask)))
+    def multi_hist(self, interp_beta, tol=1):
+        expvals = np.empty(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),))
         for config_idx in np.ndindex(self.beta.shape[:-1]):
+            print(f'Config Idx: {config_idx}')
             beta_space = self.beta[config_idx]
             k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
             log_Z = np.ones(beta_space.shape)  # intialize Z with all ones
@@ -233,33 +244,40 @@ class Sweep():
             beta_diff = np.add.outer(beta_space, -1 * beta_space)
             exponent = np.multiply.outer(energy, beta_diff)
             # Iteration do-while loop.
+            print('Entering iteration loop')
+            print(f'beta_diff: {beta_diff}')
+            print(f'exponent shape: {exponent.shape}')
             while True:
                 new_log_Z = exponent - log_Z
                 new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
-                new_log_Z = sp.special.logsumexp(new_log_Z, axis=0)
-                new_log_Z = sp.special.logsumexp(new_log_Z, axis=0)
+                new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
                 new_log_Z -= np.log(self.ntraj)
 
                 convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
                 if convergence_metric < tol:
                     break
+                log_Z = new_log_Z
+                print(f'Completed iteration with convergence metric {convergence_metric}')
+            print('Exited iteration loop')
 
             # Preparing observables
-            observables[config_idx] = raw[..., Sweep.plot_mask]
-            offset = observables[config_idx].min(axis=1, keepdims=True) - 1
-            observables[config_idx] -= offset  # Ensure we only work with non-negative numbers
-            observables[config_idx] = np.log(observables[config_idx])  # We calculate the log of the expectation value.
+            obs = raw[..., Sweep.plot_mask]
+            offset = obs.min(axis=1) - 1  # Find minimum along axis with size `self.traj`
+            obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
+            obs = np.log(obs)  # We calculate the log of the expectation value
+
+            print(f'prepared observables')
 
             # Now we interpolate using Equation 8.39.
-            beta_diff = np.add.outer(interp_beta, -1 * beta_space)
+            beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
             exponent = np.multiply.outer(energy, beta_diff)
-            observables[config_idx] = observables[config_idx] - sp.special.logsumexp(exponent - log_Z, axis=-1)
-            observables[config_idx] = sp.special.logsumexp(observables[config_idx], axis=0)
-            observables[config_idx] = sp.special.logsumexp(observables[config_idx], axis=0)
-            observables[config_idx] -= log_Z + np.log(self.ntraj)
+            temp = obs[..., np.newaxis, :] - sp.special.logsumexp(exponent - log_Z, axis=-1)[..., np.newaxis]
+            expvals[config_idx] = sp.special.logsumexp(temp, axis=(0, 1))
+            expvals[config_idx] -= log_Z[:, np.newaxis] + np.log(self.ntraj)
+            expvals[config_idx] = np.exp(expvals[config_idx]) + offset
 
-            observables[config_idx] = np.exp(observables) + offset
-        return observables
+            print('interpolated')
+        return expvals
 
 
 if __name__ == '__main__':
@@ -303,7 +321,7 @@ if __name__ == '__main__':
         k = sc_k + fcc_k + bcc_k
         k = [np.array(arr) for arr in k]
 
-        beta_space = np.arange(0.098, 0.106 + beta_step, beta_step).round(BETA_DECIMALS)
+        beta_space = np.arange(0.092, 0.115 + beta_step, beta_step).round(BETA_DECIMALS)
         beta_shape = tuple(len(ki) for ki in k) + beta_space.shape
         beta = np.empty(beta_shape)
         # Ideally, beta should straddle the critical point, and thus be unique for each configuration.

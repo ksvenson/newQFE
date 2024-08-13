@@ -88,6 +88,7 @@ class Sweep():
         self.commands = self.base_dir + '/commands.txt'
         self.batch = self.base_dir + '/batch.sh'
         self.params = self.base_dir + '/params.pkl'
+        self.multi_hist_results = self.base_dir + '/multi_hist_results.npy'
 
     def write_script(self):
         with open(self.batch, 'w', newline='\n') as f:
@@ -227,13 +228,13 @@ class Sweep():
         self.name_files()
         self.create()
 
-    def multi_hist(self, interp_beta, tol=1):
+    def multi_hist(self, interp_beta, tol=1e-5):
         expvals = np.empty(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),))
         for config_idx in np.ndindex(self.beta.shape[:-1]):
             print(f'Config Idx: {config_idx}')
             beta_space = self.beta[config_idx]
             k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
-            log_Z = np.ones(beta_space.shape)  # intialize Z with all ones
+            log_Z = np.zeros(beta_space.shape)  # intialize Z
             raw = np.empty(beta_space.shape + (self.ntraj, len(Sweep.headers)))
             for beta_idx in range(beta_space.shape[0]):
                 path = self.get_data_dir(config_idx + (beta_idx,))
@@ -244,9 +245,9 @@ class Sweep():
             beta_diff = np.add.outer(beta_space, -1 * beta_space)
             exponent = np.multiply.outer(energy, beta_diff)
             # Iteration do-while loop.
+            
             print('Entering iteration loop')
-            print(f'beta_diff: {beta_diff}')
-            print(f'exponent shape: {exponent.shape}')
+            
             while True:
                 new_log_Z = exponent - log_Z
                 new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
@@ -257,12 +258,13 @@ class Sweep():
                 if convergence_metric < tol:
                     break
                 log_Z = new_log_Z
+                
                 print(f'Completed iteration with convergence metric {convergence_metric}')
             print('Exited iteration loop')
 
             # Preparing observables
             obs = raw[..., Sweep.plot_mask]
-            offset = obs.min(axis=1) - 1  # Find minimum along axis with size `self.traj`
+            offset = obs.min(axis=1) - 1  # Find minimum along axis with length `self.traj`
             obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
             obs = np.log(obs)  # We calculate the log of the expectation value
 
@@ -277,7 +279,8 @@ class Sweep():
             expvals[config_idx] = np.exp(expvals[config_idx]) + offset
 
             print('interpolated')
-        return expvals
+        
+        np.save(self.multi_hist_results, expvals)
 
 
 if __name__ == '__main__':

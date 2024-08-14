@@ -291,8 +291,6 @@ class Sweep():
         obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
         obs = np.log(obs)  # We calculate the log of the expectation value
 
-        print(f'{config_idx} prepared observables')
-
         # Now we interpolate using Equation 8.39.
         beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
         exponent = np.multiply.outer(energy, beta_diff)
@@ -305,6 +303,7 @@ class Sweep():
         expvals -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
         expvals = np.exp(expvals) + offset
         
+        print(f'{config_idx} completed')
         return expvals
 
     def multi_hist(self, interp_beta, obs_mask=None):

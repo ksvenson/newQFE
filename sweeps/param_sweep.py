@@ -271,9 +271,7 @@ class Sweep():
         # Iteration do-while loop.
         
         print(f'{config_idx} Entering iteration loop')
-        return np.ones((interp_beta.shape[-1], np.count_nonzero(obs_mask)))
-
-        while False: # True:
+        while True:
             new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
             new_log_Z -= np.log(self.ntraj)
@@ -294,18 +292,8 @@ class Sweep():
 
         # Now we interpolate using Equation 8.39.
         beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
-
-        print('here')
-
         exponent = np.multiply.outer(energy, beta_diff)
-
-        print('after exponent')
-        print(exponent.shape)
-
         denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
-
-        print('after denominator')
-
         interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))
         interp_log_Z -= np.log(self.ntraj)
         
@@ -320,7 +308,7 @@ class Sweep():
     def multi_hist(self, interp_beta, obs_mask=None):
         if obs_mask is None:
             obs_mask = Sweep.plot_mask
-        pool = mp.Pool(processes=1)
+        pool = mp.Pool()
         args = [(idx, interp_beta, obs_mask) for idx in np.ndindex(self.beta.shape[:-1])]
         expvals = np.array(pool.starmap(self.multi_hist_step, args))
         expvals = expvals.reshape(interp_beta.shape + (np.count_nonzero(obs_mask),))

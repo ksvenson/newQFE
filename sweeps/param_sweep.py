@@ -297,7 +297,8 @@ class Sweep():
         beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
         exponent = np.multiply.outer(energy, beta_diff)
         denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
-        interp_log_Z = sp.special.logsumexp(interp_log_Z, axis=(0, 1))
+        interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))
+        interp_log_Z -= np.log(self.ntraj)
         
         expvals = obs[..., np.newaxis, :] + denominator[..., np.newaxis]
         expvals = sp.special.logsumexp(expvals, axis=(0, 1))

@@ -64,6 +64,7 @@ class Sweep():
             sweep = pkl.load(f)
             sweep.base_dir = base
             sweep.name_files()
+            sweep.save()
             return sweep
 
     @classmethod

@@ -4,12 +4,14 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import os
 import pickle as pkl
+import multiprocessing as mp
 
 KFLAGS = 'CDEFGHIJKLMNO'
 CORES_PER_NODE = 40
 BETA_DECIMALS = 6
 
 PROGRAM = 'ising_cubic'
+CONDA_ENV = 'default'
 
 SC_IDX = (0, 1, 2)
 FCC_IDX = (3, 4, 5, 6, 7, 8)
@@ -88,7 +90,8 @@ class Sweep():
         self.commands = self.base_dir + '/commands.txt'
         self.batch = self.base_dir + '/batch.sh'
         self.params = self.base_dir + '/params.pkl'
-        self.multi_hist_results = self.base_dir + '/multi_hist_results.npy'
+        self.multi_hist_batch = self.base_dir + '/multi_hist_batch.sh'
+        self.multi_hist_results = self.base_dir + '/multi_hist_results.npz'
 
     def write_script(self):
         with open(self.batch, 'w', newline='\n') as f:
@@ -121,6 +124,24 @@ class Sweep():
                 f.write(' ; ')
                 f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
                 f.write(f'\n')
+
+    def write_multi_hist_script(self):
+        with open(self.multi_hist_batch, 'w', newline='\n') as f:
+            f.write('#!/bin/sh\n')
+            f.write('#SBATCH --job-name=affine_multi_hist\n')
+            f.write('#SBATCH --partition=lq1_cpu\n')
+            f.write('#SBATCH --qos=normal\n')
+            f.write(f'#SBATCH --output=mh_{self.stdout_fname}\n')
+            f.write(f'#SBATCH --error=mh_{self.err_fname}\n')
+            f.write('\n')
+            f.write(f'#SBATCH --nodes=1\n')
+            f.write(f'#SBATCH --tasks-per-node=1\n')
+            f.write(f'#SBATCH --cpus-per-task={CORES_PER_NODE}\n')
+            f.write('\n')
+            f.write('module load mambaforge\n')
+            f.write(f'conda activate {CONDA_ENV}\n')
+            f.write('\n')
+            f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} python -u -j param_sweep.py --base {self.base_dir} --multi-hist-cluster\n')
 
     def get_data_dir(self, idx):
         dir = f'{self.data_dir}/'
@@ -192,14 +213,16 @@ class Sweep():
         self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], self.beta)
 
     def multi_hist_obs_plot(self, config_idx, free_idx, interp_beta):
-        obs = self.multi_hist(interp_beta)
+        self.multi_hist(interp_beta)
+        res = np.load(self.multi_hist_results)
+        expvals = res['expvals']
         stats = []
         for raw_stat in Sweep.headers:
             if raw_stat.plot:
                 multi_hist_label = 'multi_hist_' + raw_stat.label
                 multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
-                stats.append[Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot)]
-        self.obs_plot(obs, stats, config_idx, free_idx, self.k[free_idx], interp_beta)
+                stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
+        self.obs_plot(expvals, stats, config_idx, free_idx, self.k[free_idx], interp_beta)
 
     def refine_nwolff(self):
         if self.sw:
@@ -216,7 +239,7 @@ class Sweep():
     def refine_beta(self, step_size=0.0001, num_steps=20):
         avg, var = self.read_avg_var()
         eng_var = var[..., Sweep.get_idxes('energy')]
-        eng_var = var[..., np.array(FCC_IDX)]
+        eng_var = eng_var[..., np.array(FCC_IDX)]
 
         eng_max_var = np.argmax(eng_var, axis=-2, keepdims=True)  # find maximum along temperature axis
         eng_max_var = np.mean(eng_max_var, axis=-1).astype(int)  # average over all directions
@@ -228,60 +251,65 @@ class Sweep():
         self.name_files()
         self.create()
 
-    def multi_hist(self, interp_beta, tol=1e-5):
-        expvals = np.empty(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),))
-        for config_idx in np.ndindex(self.beta.shape[:-1]):
-            print(f'Config Idx: {config_idx}')
-            beta_space = self.beta[config_idx]
-            k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
-            log_Z = np.zeros(beta_space.shape)  # intialize Z
-            raw = np.empty(beta_space.shape + (self.ntraj, len(Sweep.headers)))
-            for beta_idx in range(beta_space.shape[0]):
-                path = self.get_data_dir(config_idx + (beta_idx,))
-                raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
-            energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number in file is sum(s_i * s_{i+1})
-            
-            # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
-            beta_diff = np.add.outer(beta_space, -1 * beta_space)
-            exponent = np.multiply.outer(energy, beta_diff)
-            # Iteration do-while loop.
-            
-            print('Entering iteration loop')
-            
-            while True:
-                new_log_Z = exponent - log_Z
-                new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
-                new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
-                new_log_Z -= np.log(self.ntraj)
-
-                convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
-                if convergence_metric < tol:
-                    break
-                log_Z = new_log_Z
-                
-                print(f'Completed iteration with convergence metric {convergence_metric}')
-            print('Exited iteration loop')
-
-            # Preparing observables
-            obs = raw[..., Sweep.plot_mask]
-            offset = obs.min(axis=1) - 1  # Find minimum along axis with length `self.traj`
-            obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
-            obs = np.log(obs)  # We calculate the log of the expectation value
-
-            print(f'prepared observables')
-
-            # Now we interpolate using Equation 8.39.
-            beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
-            exponent = np.multiply.outer(energy, beta_diff)
-            temp = obs[..., np.newaxis, :] - sp.special.logsumexp(exponent - log_Z, axis=-1)[..., np.newaxis]
-            expvals[config_idx] = sp.special.logsumexp(temp, axis=(0, 1))
-            expvals[config_idx] -= log_Z[:, np.newaxis] + np.log(self.ntraj)
-            expvals[config_idx] = np.exp(expvals[config_idx]) + offset
-
-            print('interpolated')
+    def multi_hist_step(self, config_idx, interp_beta, obs_mask, tol=1e-2):
+        print(f'Config Idx: {config_idx}')
+        beta_space = self.beta[config_idx]
+        k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
+        log_Z = np.zeros(beta_space.shape)  # intialize Z
+        raw = np.empty(beta_space.shape + (self.ntraj, len(Sweep.headers)))
+        for beta_idx in range(beta_space.shape[0]):
+            path = self.get_data_dir(config_idx + (beta_idx,))
+            raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
+        energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number in file is sum(s_i * s_{i+1})
         
-        np.save(self.multi_hist_results, expvals)
+        # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
+        beta_diff = np.add.outer(beta_space, -1 * beta_space)
+        exponent = np.multiply.outer(energy, beta_diff)
+        # Iteration do-while loop.
+        
+        print(f'{config_idx} Entering iteration loop')
+        return raw[..., obs_mask]
+        
+        while True:
+            new_log_Z = exponent - log_Z
+            new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
+            new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
+            new_log_Z -= np.log(self.ntraj)
 
+            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            if convergence_metric < tol:
+                break
+            log_Z = new_log_Z
+            
+            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
+        print('Exited iteration loop')
+
+        # Preparing observables
+        obs = raw[..., obs_mask]
+        offset = obs.min(axis=1) - 1  # Find minimum along axis with length `self.traj`
+        obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
+        obs = np.log(obs)  # We calculate the log of the expectation value
+
+        print(f'{config_idx} prepared observables')
+
+        # Now we interpolate using Equation 8.39.
+        beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
+        exponent = np.multiply.outer(energy, beta_diff)
+        expvals = obs[..., np.newaxis, :] - sp.special.logsumexp(exponent - log_Z, axis=-1)[..., np.newaxis]
+        expvals = sp.special.logsumexp(expvals, axis=(0, 1))
+        expvals -= log_Z[:, np.newaxis] + np.log(self.ntraj)
+        expvals = np.exp(expvals) + offset
+        
+        return expvals
+
+    def multi_hist(self, interp_beta, obs_mask=None):
+        if obs_mask is None:
+            obs_mask = Sweep.plot_mask
+        pool = mp.Pool()
+        args = [(idx, interp_beta, obs_mask) for idx in np.ndindex(self.beta.shape[:-1])]
+        expvals = np.array(pool.starmap(self.multi_hist_step, args))
+        expvals = expvals.reshape(self.beta.shape + (np.count_nonzero(obs_mask),))
+        np.savez(self.multi_hist_results, interp_beta=interp_beta, expvals=expvals)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -297,7 +325,8 @@ if __name__ == '__main__':
     parser.add_argument('--refine-nwolff', action='store_true')
     parser.add_argument('--refine-beta', action='store_true')
     parser.add_argument('--edit', action='store_true')
-    parser.add_argument('--multi-hist', action='store_true')
+    parser.add_argument('--multi-hist-local', action='store_true')
+    parser.add_argument('--multi-hist-cluster', action='store_true')
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -334,7 +363,7 @@ if __name__ == '__main__':
         
         sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
-    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist:
+    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster:
         sweep = Sweep.load(args.base)
         if args.analysis:
             sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
@@ -345,5 +374,10 @@ if __name__ == '__main__':
         if args.edit:
             sweep.ntraj = args.ntraj
             sweep.create()
-        if args.multi_hist:
-            sweep.multi_hist(sweep.beta)
+        if args.multi_hist_local:
+            sweep.write_multi_hist_script()
+        if args.multi_hist_cluster:
+            interp_beta = np.empty(sweep.beta.shape[:-1] + (10 * sweep.beta.shape[-1],))
+            for config_idx in np.ndindex(sweep.beta.shape[:-1]):
+                interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])
+            sweep.multi_hist(interp_beta)

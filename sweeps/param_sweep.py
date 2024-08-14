@@ -270,10 +270,9 @@ class Sweep():
         # Iteration do-while loop.
         
         print(f'{config_idx} Entering iteration loop')
-        
+
         while True:
-            new_log_Z = exponent - log_Z
-            new_log_Z = -1 * sp.special.logsumexp(new_log_Z, axis=-1)
+            new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
             new_log_Z -= np.log(self.ntraj)
 
@@ -296,9 +295,12 @@ class Sweep():
         # Now we interpolate using Equation 8.39.
         beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
         exponent = np.multiply.outer(energy, beta_diff)
-        expvals = obs[..., np.newaxis, :] - sp.special.logsumexp(exponent - log_Z, axis=-1)[..., np.newaxis]
+        denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
+        interp_log_Z = sp.special.logsumexp(interp_log_Z, axis=(0, 1))
+        
+        expvals = obs[..., np.newaxis, :] + denominator[..., np.newaxis]
         expvals = sp.special.logsumexp(expvals, axis=(0, 1))
-        expvals -= log_Z[:, np.newaxis] + np.log(self.ntraj)
+        expvals -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
         expvals = np.exp(expvals) + offset
         
         return expvals
@@ -309,7 +311,7 @@ class Sweep():
         pool = mp.Pool()
         args = [(idx, interp_beta, obs_mask) for idx in np.ndindex(self.beta.shape[:-1])]
         expvals = np.array(pool.starmap(self.multi_hist_step, args))
-        expvals = expvals.reshape(self.beta.shape + (np.count_nonzero(obs_mask),))
+        expvals = expvals.reshape(interp_beta.shape + (np.count_nonzero(obs_mask),))
         np.savez(self.multi_hist_results, interp_beta=interp_beta, expvals=expvals)
 
 if __name__ == '__main__':

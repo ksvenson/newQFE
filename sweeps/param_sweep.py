@@ -215,9 +215,9 @@ class Sweep():
             var_stats.append(Stat(var_label, var_axis, plot=avg_stat.plot))
         self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], self.beta)
 
-    def multi_hist_obs_plot(self, config_idx, free_idx, interp_beta):
-        self.multi_hist(interp_beta)
+    def multi_hist_obs_plot(self, config_idx, free_idx):
         res = np.load(self.multi_hist_results)
+        interp_beta = res['interp_beta']
         expvals = res['expvals']
         stats = []
         for raw_stat in Sweep.headers:
@@ -330,6 +330,7 @@ if __name__ == '__main__':
     parser.add_argument('--edit', action='store_true')
     parser.add_argument('--multi-hist-local', action='store_true')
     parser.add_argument('--multi-hist-cluster', action='store_true')
+    parser.add_argument('--multi-hist-plot', action='store_true')
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -366,7 +367,7 @@ if __name__ == '__main__':
         
         sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
-    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster:
+    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster or args.multi_hist_plot:
         sweep = Sweep.load(args.base)
         if args.analysis:
             sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
@@ -384,3 +385,5 @@ if __name__ == '__main__':
             for config_idx in np.ndindex(sweep.beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])
             sweep.multi_hist(interp_beta)
+        if args.multi_hist_plot:
+            sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])

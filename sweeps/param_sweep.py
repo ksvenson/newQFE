@@ -286,8 +286,8 @@ class Sweep():
 
         # Preparing observables
         obs = raw[..., obs_mask]
-        offset = obs.min(axis=1) - 1  # Find minimum along axis with length `self.traj`
-        obs -= offset[:, np.newaxis, :]  # Ensure we only work with non-negative numbers
+        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across temperature and samples`self.traj`
+        obs -= offset  # Ensure we only work with non-negative numbers
         obs = np.log(obs)  # We calculate the log of the expectation value
 
         # Now we interpolate using Equation 8.39.

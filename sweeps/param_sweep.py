@@ -357,7 +357,10 @@ if __name__ == '__main__':
         k = sc_k + fcc_k + bcc_k
         k = [np.array(arr) for arr in k]
 
-        beta_space = np.arange(0.092, 0.115 + beta_step, beta_step).round(BETA_DECIMALS)
+        start = 0.092
+        end = 0.115
+        steps = round((end-start)/args.beta_step) + 1
+        beta_space = np.linspace(start, end, steps, endpoint=True).round(BETA_DECIMALS)
         beta_shape = tuple(len(ki) for ki in k) + beta_space.shape
         beta = np.empty(beta_shape)
         # Ideally, beta should straddle the critical point, and thus be unique for each configuration.
@@ -376,7 +379,6 @@ if __name__ == '__main__':
         if args.refine_beta:
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
         if args.edit:
-            sweep.ntraj = args.ntraj
             sweep.create()
         if args.multi_hist_local:
             sweep.write_multi_hist_script()

@@ -283,7 +283,7 @@ class Sweep():
             log_Z = new_log_Z
             
             print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
-        print('Exited iteration loop')
+        print(f'{config_idx} Exited iteration loop')
 
         # Preparing observables
         obs = raw[..., obs_mask]

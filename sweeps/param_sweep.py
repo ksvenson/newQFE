@@ -272,7 +272,7 @@ class Sweep():
         
         print(f'{config_idx} Entering iteration loop')
 
-        while True:
+        while False: # True:
             new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
             new_log_Z -= np.log(self.ntraj)

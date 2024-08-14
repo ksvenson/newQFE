@@ -87,6 +87,8 @@ class Sweep():
         self.stdout_dir = self.base_dir + '/stdout'
         self.stdout_fname = self.stdout_dir + '/slurm_%A.out'
         self.err_fname = self.stdout_dir + '/slurm_%A.err'
+        self.mh_stdout_fname = self.stdout_dir + '/slurm_%A_mh.out'
+        self.mh_err_fname = self.stdout_dir + '/slurm_%A_mh.err'
         self.commands = self.base_dir + '/commands.txt'
         self.batch = self.base_dir + '/batch.sh'
         self.params = self.base_dir + '/params.pkl'
@@ -131,8 +133,8 @@ class Sweep():
             f.write('#SBATCH --job-name=affine_multi_hist\n')
             f.write('#SBATCH --partition=lq1_cpu\n')
             f.write('#SBATCH --qos=normal\n')
-            f.write(f'#SBATCH --output=mh_{self.stdout_fname}\n')
-            f.write(f'#SBATCH --error=mh_{self.err_fname}\n')
+            f.write(f'#SBATCH --output={self.mh_stdout_fname}\n')
+            f.write(f'#SBATCH --error={self.mh_err_fname}\n')
             f.write('\n')
             f.write(f'#SBATCH --nodes=1\n')
             f.write(f'#SBATCH --tasks-per-node=1\n')
@@ -141,7 +143,7 @@ class Sweep():
             f.write('module load mambaforge\n')
             f.write(f'conda activate {CONDA_ENV}\n')
             f.write('\n')
-            f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} python -u -j param_sweep.py --base {self.base_dir} --multi-hist-cluster\n')
+            f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} python -u param_sweep.py --base {self.base_dir} --multi-hist-cluster\n')
 
     def get_data_dir(self, idx):
         dir = f'{self.data_dir}/'
@@ -268,7 +270,6 @@ class Sweep():
         # Iteration do-while loop.
         
         print(f'{config_idx} Entering iteration loop')
-        return raw[..., obs_mask]
         
         while True:
             new_log_Z = exponent - log_Z

@@ -392,7 +392,7 @@ if __name__ == '__main__':
         if args.multi_hist_local:
             sweep.write_multi_hist_script()
         if args.multi_hist_cluster:
-            interp_beta = np.empty(sweep.beta.shape[:-1] + (10 * sweep.beta.shape[-1],))
+            interp_beta = np.empty(sweep.beta.shape[:-1] + (5 * sweep.beta.shape[-1],))
             for config_idx in np.ndindex(sweep.beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])
             sweep.multi_hist(interp_beta)

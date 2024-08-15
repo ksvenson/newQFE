@@ -192,15 +192,14 @@ class Sweep():
         plot_obs = Sweep.stagger_data(obs[plot_idx], beta_space[plot_idx], beta_union)
 
         for stat_idx, stat in enumerate(stats):
-            if not stat.plot:
-                continue
-            fig, ax = plt.subplots()
-            pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
-            fig.colorbar(pcm)
-            ax.set_xlabel(r'$\beta$')
-            ax.set_ylabel(rf'$k_{free_idx}$')
-            ax.set_title(f'{self.base_dir}\n{stat.axis}')
-            fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
+            if stat.plot:
+                fig, ax = plt.subplots()
+                pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
+                fig.colorbar(pcm)
+                ax.set_xlabel(r'$\beta$')
+                ax.set_ylabel(rf'$k_{free_idx}$')
+                ax.set_title(f'{self.base_dir}\n{stat.axis}')
+                fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
     def raw_obs_plot(self, config_idx, free_idx):
         avg, var = self.read_avg_var()
@@ -218,14 +217,18 @@ class Sweep():
     def multi_hist_obs_plot(self, config_idx, free_idx):
         res = np.load(self.multi_hist_results)
         interp_beta = res['interp_beta']
-        expvals = res['expvals']
-        stats = []
+        avg = res['avg']
+        var = res['var']
+        avg_stats = []
+        var_stats = []
         for raw_stat in Sweep.headers:
             if raw_stat.plot:
                 multi_hist_label = 'multi_hist_' + raw_stat.label
                 multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
-                stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
-        self.obs_plot(expvals, stats, config_idx, free_idx, self.k[free_idx], interp_beta)
+                avg_stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
+                var_stats.append(Stat(multi_hist_label + '_var', multi_hist_axis + ' Variance', plot=raw_stat.plot))
+        self.obs_plot(avg, avg_stats, config_idx, free_idx, self.k[free_idx], interp_beta)
+        self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], interp_beta)
 
     def refine_nwolff(self):
         if self.sw:
@@ -254,7 +257,7 @@ class Sweep():
         self.name_files()
         self.create()
 
-    def multi_hist_step(self, config_idx, interp_beta, obs_mask, tol=1e-2):
+    def multi_hist_step(self, config_idx, interp_beta, tol=1e-2):
         print(f'Config Idx: {config_idx}')
         beta_space = self.beta[config_idx]
         k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
@@ -284,35 +287,41 @@ class Sweep():
             print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
         print(f'{config_idx} Exited iteration loop')
 
-        # Preparing observables
-        obs = raw[..., obs_mask]
-        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across temperature and samples`self.traj`
-        obs -= offset  # Ensure we only work with non-negative numbers
-        obs = np.log(obs)  # We calculate the log of the expectation value
-
         # Now we interpolate using Equation 8.39.
         beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)
         exponent = np.multiply.outer(energy, beta_diff)
         denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
         interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))
         interp_log_Z -= np.log(self.ntraj)
+
+        # Preparing observables
+        obs = raw[..., Sweep.plot_mask]
+        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across temperature and samples`self.traj`
+        obs -= offset  # Ensure we only work with non-negative numbers
+        obs = np.log(obs)  # We calculate the log of the expectation value
         
-        expvals = obs[..., np.newaxis, :] + denominator[..., np.newaxis]
-        expvals = sp.special.logsumexp(expvals, axis=(0, 1))
-        expvals -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
-        expvals = np.exp(expvals) + offset
+        # Computing averages
+        avg = obs[..., np.newaxis, :] + denominator[..., np.newaxis]
+        avg = sp.special.logsumexp(avg, axis=(0, 1))
+        avg -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
+        avg = np.exp(avg) + offset
+
+        # Computing obs**2 so we can compute the variance
+        var = 2 * obs[..., np.newaxis, :] + denominator[..., np.newaxis]
+        var = sp.special.logsumexp(var, axis=(0, 1))
+        var -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
+        var = np.exp(var) + 2 * offset * avg - offset**2 - avg**2  # This correction is needed since we computed \expval{(obs - offset)^2}
         
         print(f'{config_idx} completed')
-        return expvals
+        return np.stack((avg, var))
 
-    def multi_hist(self, interp_beta, obs_mask=None):
-        if obs_mask is None:
-            obs_mask = Sweep.plot_mask
+    def multi_hist(self, interp_beta):
         pool = mp.Pool()
-        args = [(idx, interp_beta, obs_mask) for idx in np.ndindex(self.beta.shape[:-1])]
-        expvals = np.array(pool.starmap(self.multi_hist_step, args))
-        expvals = expvals.reshape(interp_beta.shape + (np.count_nonzero(obs_mask),))
-        np.savez(self.multi_hist_results, interp_beta=interp_beta, expvals=expvals)
+        args = [(idx, interp_beta) for idx in np.ndindex(self.beta.shape[:-1])]
+        res = np.array(pool.starmap(self.multi_hist_step, args))
+        avg = res[:, 0].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        var = res[:, 1].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

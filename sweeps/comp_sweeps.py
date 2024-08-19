@@ -7,7 +7,7 @@ Could be implemented more elegantly. Right now a lot of code is copy-pasted from
 
 import numpy as np
 import matplotlib.pyplot as plt
-import param_sweep as ps
+from param_sweep import *
 import argparse
 
 
@@ -38,17 +38,18 @@ def comp_sweeps(wolff, sw, config_idx, free_idx, dir):
         k_row[np.isin(beta_union, beta[k_idx])] = sig[k_idx, :]
 
     ylabel = rf'$k_{free_idx}$'
-    for stat_idx, stat in enumerate(ps.Sweep.headers):
+    for stat_idx, stat in enumerate(Sweep.headers):
         if not stat.plot:
             continue
 
         fig, ax = plt.subplots()
-        pcm = ax.pcolormesh(beta_union, k_space, plot_sig[..., stat_idx], shading='nearest')
+        bound = np.max(np.abs(plot_sig[..., stat_idx]))
+        pcm = ax.pcolormesh(beta_union, k_space, plot_sig[..., stat_idx], shading='nearest', vmin=-bound, vmax=bound, cmap='RdBu')
         fig.colorbar(pcm)
         ax.set_xlabel(r'$\beta$')
         ax.set_ylabel(ylabel)
         ax.set_title(f'{stat.axis}')
-        fig.savefig(f'{dir}/{stat.label}.svg', **ps.FIG_SAVE_OPTIONS)
+        fig.savefig(f'{dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
 
 
 if __name__ == '__main__':
@@ -61,7 +62,7 @@ if __name__ == '__main__':
 
     for idx in range(len(args.compare)):
         if args.compare[idx].endswith('/'):
-            args.compare[idx] = args.compare[idx][-1]
-    wolff = ps.Sweep.load(args.compare[0])
-    sw = ps.Sweep.load(args.compare[1])
-    comp_sweeps(wolff, sw, (0,)*13, ps.FCC_IDX[-1], args.compare[2])
+            args.compare[idx] = args.compare[idx][:-1]
+    wolff = Sweep.load(args.compare[0])
+    sw = Sweep.load(args.compare[1])
+    comp_sweeps(wolff, sw, (0,)*13, FCC_IDX[-1], args.compare[2])

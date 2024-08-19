@@ -183,7 +183,7 @@ class Sweep():
             stagger[idx, np.isin(beta_union, beta[idx])] = data[idx]
         return stagger
 
-    def obs_plot(self, obs, stats, config_idx, free_idx, k_space, beta_space):
+    def obs_plot(self, obs, stats, config_idx, free_idx, k_space, beta_space, surface=False):
         plot_idx = list(config_idx) + [slice(None)]
         plot_idx[free_idx] = slice(None)
         plot_idx = tuple(plot_idx)
@@ -193,13 +193,16 @@ class Sweep():
 
         for stat_idx, stat in enumerate(stats):
             if stat.plot:
-                fig, ax = plt.subplots()
-                pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
-                fig.colorbar(pcm)
-                ax.set_xlabel(r'$\beta$')
-                ax.set_ylabel(rf'$k_{free_idx}$')
-                ax.set_title(f'{self.base_dir}\n{stat.axis}')
+                if surface:
+                    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+                    ax.plot_surface(*np.meshgrid(beta_union, k_space), plot_obs[..., stat_idx])
+                else:
+                    fig, ax = plt.subplots()
+                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
+                    fig.colorbar(pcm)
+                ax.set(xlabel=r'$\beta$', ylabel=rf'$k_{free_idx}$', title=f'{self.base_dir}\n{stat.axis}')
                 fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
+                plt.close()
 
     def raw_obs_plot(self, config_idx, free_idx):
         avg, var = self.read_avg_var()
@@ -247,11 +250,11 @@ class Sweep():
         eng_var = var[..., Sweep.get_idxes('energy')]
         eng_var = eng_var[..., np.array(FCC_IDX)]
 
-        eng_max_var = np.argmax(eng_var, axis=-2, keepdims=True)  # find maximum along temperature axis
-        eng_max_var = np.mean(eng_max_var, axis=-1).astype(int)  # average over all directions
-        new_beta = np.empty(self.beta.shape[:-1] + (2*num_steps + 1,))
-        new_beta[...] = step_size * (np.arange(new_beta.shape[-1]) - num_steps)
-        self.beta = (new_beta + np.take_along_axis(self.beta, eng_max_var, axis=-1)).round(BETA_DECIMALS)
+        max_eng_var = np.argmax(eng_var, axis=-2)  # find maximum along temperature axis
+        max_eng_var = np.mean(max_eng_var, axis=-1).astype(int)  # average over all directions
+        beta_crit = np.take_along_axis(self.beta, max_eng_var[..., np.newaxis], axis=-1).reshape(self.beta.shape[:-1])
+        beta_increments = step_size * (np.arange(2*num_steps + 1) - num_steps)
+        self.beta = np.add.outer(beta_crit, beta_increments).round(BETA_DECIMALS)
 
         self.base_dir = self.base_dir + '_rb'
         self.name_files()
@@ -388,6 +391,7 @@ if __name__ == '__main__':
         if args.refine_beta:
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
         if args.edit:
+            print(sweep.beta.shape)
             sweep.create()
         if args.multi_hist_local:
             sweep.write_multi_hist_script()

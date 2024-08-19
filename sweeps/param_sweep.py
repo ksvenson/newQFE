@@ -21,6 +21,8 @@ BCC_IDX = (9, 10, 11, 12)
 FIG_SAVE_OPTIONS = {'bbox_inches': 'tight'}
 
 # TODO Do not loop over configruations of k that are permutations of each other.
+# TODO self.ntraj is used in equations for the number of samples. Replace with self.ntraj * len(self.seeds)
+# TODO replace get_data_dir with get_data_fnames
 
 class Stat():
     def __init__(self, label, axis=None, plot=False):
@@ -35,7 +37,7 @@ class Sweep():
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
     plot_mask = np.array([stat.plot for stat in headers])
     
-    def __init__(self, nx, ny, nz, seed, beta, ntherm, ntraj, base_dir, k, sw=False):
+    def __init__(self, nx, ny, nz, seeds, beta, ntherm, ntraj, base_dir, k, sw=False):
         assert len(k) == 13
         for i, ki in enumerate(k):
             assert beta.shape[i] == len(ki)
@@ -43,10 +45,11 @@ class Sweep():
         self.nx = nx
         self.ny = ny
         self.nz = nz
-        self.seed = seed
+        self.seeds = seeds
         self.beta = beta
         self.ntherm = ntherm
         self.ntraj = ntraj
+        self.n_samples = len(self.seeds) * self.ntraj
         
         self.base_dir = base_dir
         self.name_files()
@@ -115,19 +118,20 @@ class Sweep():
             f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} parallel -j {CORES_PER_NODE} -a {self.commands}\n')
         with open (self.commands, 'w', newline='\n') as f:
             for count, idx in enumerate(np.ndindex(self.beta.shape)):
-                f.write(f'{PROGRAM} -S {self.seed} -d {self.data_dir}')
-                f.write(f' -X {self.nx} -Y {self.ny} -Z {self.nz}')
-                f.write(f' -h {self.ntherm} -t {self.ntraj}')
-                for flag_idx, flag in enumerate(KFLAGS):
-                    f.write(f' -{flag} {self.k[flag_idx][idx[flag_idx]]}')
-                f.write(f' -B {self.beta[idx]}')
-                if self.sw:
-                    f.write(' -w -1')  # Use the Swendsen-Wang algorithm
-                else:
-                    f.write(f' -w {self.nwolff[idx]}')
-                f.write(' ; ')
-                f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
-                f.write(f'\n')
+                for seed in self.seeds:
+                    f.write(f'{PROGRAM} -S {seed} -d {self.data_dir}')
+                    f.write(f' -X {self.nx} -Y {self.ny} -Z {self.nz}')
+                    f.write(f' -h {self.ntherm} -t {self.ntraj}')
+                    for flag_idx, flag in enumerate(KFLAGS):
+                        f.write(f' -{flag} {self.k[flag_idx][idx[flag_idx]]}')
+                    f.write(f' -B {self.beta[idx]}')
+                    if self.sw:
+                        f.write(' -w -1')  # Use the Swendsen-Wang algorithm
+                    else:
+                        f.write(f' -w {self.nwolff[idx]}')
+                    f.write(' ; ')
+                    f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
+                    f.write(f'\n')
 
     def write_multi_hist_script(self):
         with open(self.multi_hist_batch, 'w', newline='\n') as f:
@@ -147,33 +151,36 @@ class Sweep():
             f.write('\n')
             f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} python -u param_sweep.py --base {self.base_dir} --multi-hist-cluster\n')
 
-    def get_data_dir(self, idx):
+    def get_data_fnames(self, idx):
         dir = f'{self.data_dir}/'
         for i, ki in enumerate(self.k):
             dir += f'{ki[idx[i]]:.2f}_'
         dir = dir[:-1]
 
-        fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{self.seed}.obs'
-        path = f'{dir}/{fname}'
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f'Missing data file: {path}')
-        return f'{dir}/{fname}'
+        fnames = []
+        for seed in seeds:
+            fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{seed}.obs'
+            path = f'{dir}/{fname}'
+            if not os.path.isfile(path):
+                raise FileNotFoundError(f'Missing data file: {path}')
+            fnames.append(path)
+        return fnames
 
     def get_raw(self, config_idx):
-        raw = np.empty(self.beta[config_idx].shape + (self.ntraj, len(Sweep.headers)))
+        raw = np.empty(self.beta[config_idx].shape + (self.n_samples, len(Sweep.headers)))
         for beta_idx in range(raw.shape[0]):
-            path = self.get_data_dir(config_idx + (beta_idx,))
-            raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
+            fnames = self.get_data_fnames(config_idx + (beta_idx,))
+            for seed_idx, fname in enumerate(fnames):
+                raw[beta_idx, seed_idx * self.ntraj : (seed_idx + 1) * self.ntraj] = np.genfromtxt(fname, delimiter=' ')
         return raw
 
     def read_avg_var(self):
         avg = np.empty(self.beta.shape + (len(Sweep.headers),))
         var = np.empty(self.beta.shape + (len(Sweep.headers),))
-        for idx in np.ndindex(self.beta.shape):          
-            path = self.get_data_dir(idx)
-            data = np.genfromtxt(path, delimiter=' ')
-            avg[idx] = data.mean(axis=0)
-            var[idx] = data.var(axis=0)
+        for config_idx in np.ndindex(self.beta.shape[:-1]):
+            raw = self.get_raw(config_idx)
+            avg[config_idx] = raw.mean(axis=-2)
+            var[config_idx] = raw.var(axis=-2)
         return avg, var
     
     @staticmethod
@@ -293,7 +300,7 @@ class Sweep():
         while True:
             new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))
-            new_log_Z -= np.log(self.ntraj)
+            new_log_Z -= np.log(self.n_samples)
 
             convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
             if convergence_metric < tol:
@@ -308,7 +315,7 @@ class Sweep():
         exponent = np.multiply.outer(energy, beta_diff)
         denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)
         interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))
-        interp_log_Z -= np.log(self.ntraj)
+        interp_log_Z -= np.log(self.n_samples)
 
         # Preparing observables
         obs = raw[..., Sweep.plot_mask]
@@ -319,13 +326,13 @@ class Sweep():
         # Computing averages
         avg = obs[..., np.newaxis, :] + denominator[..., np.newaxis]
         avg = sp.special.logsumexp(avg, axis=(0, 1))
-        avg -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
+        avg -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)
         avg = np.exp(avg) + offset
 
         # Computing obs**2 so we can compute the variance
         var = 2 * obs[..., np.newaxis, :] + denominator[..., np.newaxis]
         var = sp.special.logsumexp(var, axis=(0, 1))
-        var -= interp_log_Z[:, np.newaxis] + np.log(self.ntraj)
+        var -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)
         var = np.exp(var) + 2 * offset * avg - offset**2 - avg**2  # This correction is needed since we computed \expval{(obs - offset)^2}
         
         print(f'{config_idx} completed')
@@ -382,7 +389,7 @@ if __name__ == '__main__':
         ny = 32
         nz = 32
 
-        seed = 1009
+        seeds = np.arange(10)
 
         ntherm = int(2*1e3)
         ntraj = args.ntraj
@@ -409,7 +416,7 @@ if __name__ == '__main__':
         # Using `refine_beta` to create a new sweep that only samples around criticality.
         beta[...] = beta_space
         
-        sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
+        sweep = Sweep(nx, ny, nz, seeds, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
     if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster or args.multi_hist_plot or args.eng_hist:
         sweep = Sweep.load(args.base)

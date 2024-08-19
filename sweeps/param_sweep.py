@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import os
 import pickle as pkl
 import multiprocessing as mp
@@ -158,6 +159,13 @@ class Sweep():
             raise FileNotFoundError(f'Missing data file: {path}')
         return f'{dir}/{fname}'
 
+    def get_raw(self, config_idx):
+        raw = np.empty(self.beta[config_idx].shape + (self.ntraj, len(Sweep.headers)))
+        for beta_idx in range(raw.shape[0]):
+            path = self.get_data_dir(config_idx + (beta_idx,))
+            raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
+        return raw
+
     def read_avg_var(self):
         avg = np.empty(self.beta.shape + (len(Sweep.headers),))
         var = np.empty(self.beta.shape + (len(Sweep.headers),))
@@ -198,7 +206,7 @@ class Sweep():
                     ax.plot_surface(*np.meshgrid(beta_union, k_space), plot_obs[..., stat_idx])
                 else:
                     fig, ax = plt.subplots()
-                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest')
+                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', cmap='viridis_r')
                     fig.colorbar(pcm)
                 ax.set(xlabel=r'$\beta$', ylabel=rf'$k_{free_idx}$', title=f'{self.base_dir}\n{stat.axis}')
                 fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
@@ -260,15 +268,20 @@ class Sweep():
         self.name_files()
         self.create()
 
+    def multi_hist(self, interp_beta):
+        pool = mp.Pool()
+        args = [(idx, interp_beta) for idx in np.ndindex(self.beta.shape[:-1])]
+        res = np.array(pool.starmap(self.multi_hist_step, args))
+        avg = res[:, 0].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        var = res[:, 1].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
+
     def multi_hist_step(self, config_idx, interp_beta, tol=1e-2):
         print(f'Config Idx: {config_idx}')
         beta_space = self.beta[config_idx]
         k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
         log_Z = np.zeros(beta_space.shape)  # intialize Z
-        raw = np.empty(beta_space.shape + (self.ntraj, len(Sweep.headers)))
-        for beta_idx in range(beta_space.shape[0]):
-            path = self.get_data_dir(config_idx + (beta_idx,))
-            raw[beta_idx] = np.genfromtxt(path, delimiter=' ')
+        raw = self.get_raw(config_idx)
         energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number in file is sum(s_i * s_{i+1})
         
         # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
@@ -318,13 +331,28 @@ class Sweep():
         print(f'{config_idx} completed')
         return np.stack((avg, var))
 
-    def multi_hist(self, interp_beta):
-        pool = mp.Pool()
-        args = [(idx, interp_beta) for idx in np.ndindex(self.beta.shape[:-1])]
-        res = np.array(pool.starmap(self.multi_hist_step, args))
-        avg = res[:, 0].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
-        var = res[:, 1].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
-        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
+    def eng_hist(self, config_idx):
+        raw = self.get_raw(config_idx)
+        k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
+        energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)
+        energy = energy[::5]
+
+        fig, ax = plt.subplots()
+        num_bins = 100
+
+        cmap = plt.get_cmap('viridis_r')
+        colors = cmap(np.linspace(0, 1, energy.shape[0]))
+
+        ax.hist(energy.T, histtype='barstacked', bins=num_bins, color=colors)
+        norm = mpl.colors.Normalize(vmin=self.beta[config_idx][0], vmax=self.beta[config_idx][-1])
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        cbar = fig.colorbar(sm, ax=ax, orientation='horizontal')
+        cbar.set_label(r'$\beta$')
+
+        ax.set(xlabel='Energy', ylabel='Counts', title=f'Energy Histogram for Configuration {config_idx}')
+        fig.savefig(f'{self.figs_dir}/eng_hist.svg', **FIG_SAVE_OPTIONS)
+        plt.close()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -343,6 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--multi-hist-local', action='store_true')
     parser.add_argument('--multi-hist-cluster', action='store_true')
     parser.add_argument('--multi-hist-plot', action='store_true')
+    parser.add_argument('--eng-hist', action='store_true')
     args = parser.parse_args()
 
     if args.base.endswith('/'):
@@ -382,7 +411,7 @@ if __name__ == '__main__':
         
         sweep = Sweep(nx, ny, nz, seed, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
-    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster or args.multi_hist_plot:
+    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster or args.multi_hist_plot or args.eng_hist:
         sweep = Sweep.load(args.base)
         if args.analysis:
             sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
@@ -402,3 +431,9 @@ if __name__ == '__main__':
             sweep.multi_hist(interp_beta)
         if args.multi_hist_plot:
             sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])
+        if args.eng_hist:
+            config_idx = [0]*13
+            # config_idx[FCC_IDX[-1]] = len(sweep.k[FCC_IDX[-1]]) // 2
+            config_idx[FCC_IDX[-1]] = -1
+            config_idx = tuple(config_idx)
+            sweep.eng_hist(config_idx)

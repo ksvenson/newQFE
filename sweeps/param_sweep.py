@@ -335,7 +335,6 @@ class Sweep():
         raw = self.get_raw(config_idx)
         k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
         energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)
-        energy = energy[::5]
 
         fig, ax = plt.subplots()
         num_bins = 100
@@ -433,7 +432,6 @@ if __name__ == '__main__':
             sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])
         if args.eng_hist:
             config_idx = [0]*13
-            # config_idx[FCC_IDX[-1]] = len(sweep.k[FCC_IDX[-1]]) // 2
-            config_idx[FCC_IDX[-1]] = -1
+            config_idx[FCC_IDX[-1]] = len(sweep.k[FCC_IDX[-1]]) // 2
             config_idx = tuple(config_idx)
             sweep.eng_hist(config_idx)

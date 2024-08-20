@@ -361,12 +361,26 @@ class Sweep():
         plt.close()
 
 
+def get_seeds(n):
+    primes = [2]
+    i = 3
+    while (len(primes) < n):
+        primes.append(i)
+        for divisor in range(3, i // 3 + 1):
+            if i % divisor == 0:
+                primes = primes[:-1]
+                break
+        i += 2
+    return np.array(primes)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--base', required=True)
     
     parser.add_argument('--sw', action='store_true')
     parser.add_argument('--ntraj', default=int(1e3), type=int)
+    parser.add_argument('--seeds', default=10, type=int)
     parser.add_argument('--beta-step', default=0.0001, type=float)
     parser.add_argument('--num-beta-steps', default=20, type=float)
 
@@ -389,7 +403,7 @@ if __name__ == '__main__':
         ny = 32
         nz = 32
 
-        seeds = np.arange(10)
+        seeds = get_seeds(args.seeds)
 
         ntherm = int(2*1e3)
         ntraj = args.ntraj

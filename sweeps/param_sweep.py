@@ -117,7 +117,8 @@ class Sweep():
             f.write('\n')
             f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} parallel -j {CORES_PER_NODE} -a {self.commands}\n')
         with open (self.commands, 'w', newline='\n') as f:
-            for count, idx in enumerate(np.ndindex(self.beta.shape)):
+            count = 1
+            for idx in np.ndindex(self.beta.shape):
                 for seed in self.seeds:
                     f.write(f'{PROGRAM} -S {seed} -d {self.data_dir}')
                     f.write(f' -X {self.nx} -Y {self.ny} -Z {self.nz}')
@@ -130,8 +131,9 @@ class Sweep():
                     else:
                         f.write(f' -w {self.nwolff[idx]}')
                     f.write(' ; ')
-                    f.write(f'echo "Completed {count+1} of {self.beta.size} on $(date) using node $(hostname)"')
+                    f.write(f'echo "Completed {count} of {self.beta.size * len(self.seeds)} on $(date) using node $(hostname)"')
                     f.write(f'\n')
+                    count += 1
 
     def write_multi_hist_script(self):
         with open(self.multi_hist_batch, 'w', newline='\n') as f:
@@ -158,7 +160,7 @@ class Sweep():
         dir = dir[:-1]
 
         fnames = []
-        for seed in seeds:
+        for seed in self.seeds:
             fname = f'{self.nx}_{self.ny}_{self.nz}_{self.beta[idx]:.{BETA_DECIMALS}f}_{seed}.obs'
             path = f'{dir}/{fname}'
             if not os.path.isfile(path):
@@ -198,8 +200,8 @@ class Sweep():
             stagger[idx, np.isin(beta_union, beta[idx])] = data[idx]
         return stagger
 
-    def obs_plot(self, obs, stats, config_idx, free_idx, k_space, beta_space, surface=False):
-        plot_idx = list(config_idx) + [slice(None)]
+    def obs_plot(self, obs, stats, config_idx, free_idx, k_space, beta_space, surface=False, pcolormesh_kwargs={}):
+        plot_idx = list(config_idx) + [slice(None)]  # To include beta dimension
         plot_idx[free_idx] = slice(None)
         plot_idx = tuple(plot_idx)
 
@@ -213,7 +215,7 @@ class Sweep():
                     ax.plot_surface(*np.meshgrid(beta_union, k_space), plot_obs[..., stat_idx])
                 else:
                     fig, ax = plt.subplots()
-                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', cmap='viridis_r')
+                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', **pcolormesh_kwargs)
                     fig.colorbar(pcm)
                 ax.set(xlabel=r'$\beta$', ylabel=rf'$k_{free_idx}$', title=f'{self.base_dir}\n{stat.axis}')
                 fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
@@ -360,6 +362,28 @@ class Sweep():
         fig.savefig(f'{self.figs_dir}/eng_hist.svg', **FIG_SAVE_OPTIONS)
         plt.close()
 
+    def comp_sweeps(self, other):
+        assert self.beta.shape == other.beta.shape
+        p_vals = np.empty(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        for config_idx in np.ndindex(self.beta.shape[:-1]):        
+            self_data = self.get_raw(config_idx)[..., Sweep.plot_mask]
+            otehr_data = other.get_raw(config_idx)[..., Sweep.plot_mask]
+
+            p_vals[config_idx] = sp.stats.ks_2samp(self_data, otehr_data, axis=-2).pvalue
+        np.save(f'{self.base_dir}/comp_{other.base_dir}.npy', p_vals)
+
+    def plot_comp_sweeps(self, other, config_idx, free_idx):
+        p_vals = np.clip(np.load(f'{self.base_dir}/comp_{other.base_dir}.npy'), a_min=1e-20, a_max=1)
+        stats = []
+        for stat in Sweep.headers:
+            if stat.plot:
+                label = f'{stat.label}_comp_{other.base_dir}'
+                axis = f'{stat.axis} KS Test p Value'
+                stats.append(Stat(label, axis=axis, plot=stat.plot))
+
+        kwargs = {'cmap': 'viridis',   
+                  'norm': 'log'}
+        self.obs_plot(p_vals, stats, config_idx, free_idx, self.k[free_idx], self.beta, pcolormes_kwargs=kwargs)
 
 def get_seeds(n):
     primes = [2]
@@ -393,7 +417,25 @@ if __name__ == '__main__':
     parser.add_argument('--multi-hist-cluster', action='store_true')
     parser.add_argument('--multi-hist-plot', action='store_true')
     parser.add_argument('--eng-hist', action='store_true')
+    parser.add_argument('--calc-comp')
+    parser.add_argument('--plot-comp')
     args = parser.parse_args()
+
+    requires_load_list = [args.analysis,
+                          args.refine_nwolff,
+                          args.refine_beta,
+                          args.edit,
+                          args.multi_hist_local,
+                          args.multi_hist_cluster,
+                          args.multi_hist_plot,
+                          args.eng_hist,
+                          args.calc_comp,
+                          args.plot_comp]
+    requires_load = False
+    for flag in requires_load_list:
+        if flag:
+            requires_load = True
+            break
 
     if args.base.endswith('/'):
         args.base = args.base[:-1]
@@ -432,7 +474,7 @@ if __name__ == '__main__':
         
         sweep = Sweep(nx, ny, nz, seeds, beta, ntherm, ntraj, args.base, k, sw=args.sw)
 
-    if args.analysis or args.refine_nwolff or args.refine_beta or args.edit or args.multi_hist_local or args.multi_hist_cluster or args.multi_hist_plot or args.eng_hist:
+    if requires_load:
         sweep = Sweep.load(args.base)
         if args.analysis:
             sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
@@ -442,6 +484,8 @@ if __name__ == '__main__':
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
         if args.edit:
             print(sweep.beta.shape)
+            sweep.seeds = np.array([sweep.seed])
+            sweep.n_samples = sweep.ntraj * len(sweep.seeds)
             sweep.create()
         if args.multi_hist_local:
             sweep.write_multi_hist_script()
@@ -458,3 +502,13 @@ if __name__ == '__main__':
             config_idx[FCC_IDX[-1]] = -1
             config_idx = tuple(config_idx)
             sweep.eng_hist(config_idx)
+        if args.calc_comp:
+            if args.calc_comp.endswith('/'):
+                args.calc_comp = args.calc_comp[:-1]
+            other = Sweep.load(args.calc_comp)
+            sweep.comp_sweeps(other)
+        if args.plot_comp:
+            if args.plot_comp.endswith('/'):
+                args.plot_comp = args.plot_comp[:-1]
+            other = Sweep.load(args.plot_comp)
+            sweep.plot_comp_sweeps(other, (0,)*13, FCC_IDX[-1])

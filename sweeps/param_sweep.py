@@ -37,7 +37,7 @@ class Sweep():
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
     plot_mask = np.array([stat.plot for stat in headers])
     
-    def __init__(self, nx, ny, nz, seeds, beta, ntherm, ntraj, base_dir, k, sw=False):
+    def __init__(self, nx, ny, nz, seeds, beta, ntherm, ntraj, base_dir, k, nwolff):
         assert len(k) == 13
         for i, ki in enumerate(k):
             assert beta.shape[i] == len(ki)
@@ -55,10 +55,7 @@ class Sweep():
         self.name_files()
 
         self.k = k
-        self.sw = sw
-
-        if not self.sw:
-            self.nwolff = np.full(beta_shape, 100)
+        self.nwolff = nwolff
         
         self.create()
             
@@ -126,7 +123,7 @@ class Sweep():
                     for flag_idx, flag in enumerate(KFLAGS):
                         f.write(f' -{flag} {self.k[flag_idx][idx[flag_idx]]}')
                     f.write(f' -B {self.beta[idx]}')
-                    if self.sw:
+                    if self.nwolff is None:
                         f.write(' -w -1')  # Use the Swendsen-Wang algorithm
                     else:
                         f.write(f' -w {self.nwolff[idx]}')
@@ -169,7 +166,7 @@ class Sweep():
         return fnames
 
     def get_raw(self, config_idx):
-        raw = np.empty(self.beta[config_idx].shape + (self.n_samples, len(Sweep.headers)))
+        raw = np.full(self.beta[config_idx].shape + (self.n_samples, len(Sweep.headers)), np.nan)
         for beta_idx in range(raw.shape[0]):
             fnames = self.get_data_fnames(config_idx + (beta_idx,))
             for seed_idx, fname in enumerate(fnames):
@@ -177,8 +174,8 @@ class Sweep():
         return raw
 
     def read_avg_var(self):
-        avg = np.empty(self.beta.shape + (len(Sweep.headers),))
-        var = np.empty(self.beta.shape + (len(Sweep.headers),))
+        avg = np.full(self.beta.shape + (len(Sweep.headers),), np.nan)
+        var = np.full(self.beta.shape + (len(Sweep.headers),), np.nan)
         for config_idx in np.ndindex(self.beta.shape[:-1]):
             raw = self.get_raw(config_idx)
             avg[config_idx] = raw.mean(axis=-2)
@@ -251,8 +248,8 @@ class Sweep():
         self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], interp_beta)
 
     def refine_nwolff(self):
-        if self.sw:
-            print('Sweep uses the Swedsen-Wang algorithm. Can not refine nwolff.')
+        if self.nwolff is None:
+            print('Sweep uses the Swendsen-Wang algorithm. Can not refine nwolff.')
             return
         avg, var = self.read_avg_var()
         flip_metric = avg[..., Sweep.get_idxes('flip_metric')[0]]
@@ -364,7 +361,7 @@ class Sweep():
 
     def comp_sweeps(self, other):
         assert self.beta.shape == other.beta.shape
-        p_vals = np.empty(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),))
+        p_vals = np.full(self.beta.shape + (np.count_nonzero(Sweep.plot_mask),), np.nan)
         for config_idx in np.ndindex(self.beta.shape[:-1]):        
             self_data = self.get_raw(config_idx)[..., Sweep.plot_mask]
             otehr_data = other.get_raw(config_idx)[..., Sweep.plot_mask]
@@ -386,8 +383,8 @@ class Sweep():
         self.obs_plot(p_vals, stats, config_idx, free_idx, self.k[free_idx], self.beta, pcolormes_kwargs=kwargs)
 
 def get_seeds(n):
-    primes = [2]
-    i = 3
+    primes = []
+    i = 1009
     while (len(primes) < n):
         primes.append(i)
         for divisor in range(3, i // 3 + 1):
@@ -466,47 +463,66 @@ if __name__ == '__main__':
         steps = round((end-start)/args.beta_step) + 1
         beta_space = np.linspace(start, end, steps, endpoint=True).round(BETA_DECIMALS)
         beta_shape = tuple(len(ki) for ki in k) + beta_space.shape
-        beta = np.empty(beta_shape)
+        beta = np.full(beta_shape, np.nan)
         # Ideally, beta should straddle the critical point, and thus be unique for each configuration.
-        # However, when we initialize the sweep, we don't exactly know where the critical point is.
-        # Using `refine_beta` to create a new sweep that only samples around criticality.
+        # However, when we initialize the sweep, we don't know where the critical point is.
+        # Use `refine_beta` to create a new sweep that only samples around criticality.
         beta[...] = beta_space
+
+        nwolff = None
+        if not args.sw:
+            # We don't know what nwolff should be a priori. Take some data first, then use `refine_nwolff`
+            # to make adjust `nwolff` appropriately.
+            nwolff = np.full(beta_shape, 100)
         
-        sweep = Sweep(nx, ny, nz, seeds, beta, ntherm, ntraj, args.base, k, sw=args.sw)
+        sweep = Sweep(nx, ny, nz, seeds, beta, ntherm, ntraj, args.base, k, nwolff)
 
     if requires_load:
         sweep = Sweep.load(args.base)
+
         if args.analysis:
             sweep.raw_obs_plot((0,)*13, FCC_IDX[-1])
+
         if args.refine_nwolff:
             sweep.refine_nwolff()
+
         if args.refine_beta:
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
+
         if args.edit:
             print(sweep.beta.shape)
             sweep.seeds = np.array([sweep.seed])
+            del sweep.seed
+            print(sweep.ntraj)
             sweep.n_samples = sweep.ntraj * len(sweep.seeds)
+            print(sweep.n_samples)
             sweep.create()
+
         if args.multi_hist_local:
             sweep.write_multi_hist_script()
+
         if args.multi_hist_cluster:
-            interp_beta = np.empty(sweep.beta.shape[:-1] + (5 * sweep.beta.shape[-1],))
+            interp_beta = np.full(sweep.beta.shape[:-1] + (5 * sweep.beta.shape[-1],), np.nan)
             for config_idx in np.ndindex(sweep.beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])
             sweep.multi_hist(interp_beta)
+        
         if args.multi_hist_plot:
             sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])
+        
         if args.eng_hist:
             config_idx = [0]*13
             # config_idx[FCC_IDX[-1]] = len(sweep.k[FCC_IDX[-1]]) // 2
             config_idx[FCC_IDX[-1]] = -1
             config_idx = tuple(config_idx)
             sweep.eng_hist(config_idx)
+        
         if args.calc_comp:
             if args.calc_comp.endswith('/'):
                 args.calc_comp = args.calc_comp[:-1]
             other = Sweep.load(args.calc_comp)
             sweep.comp_sweeps(other)
+        
         if args.plot_comp:
             if args.plot_comp.endswith('/'):
                 args.plot_comp = args.plot_comp[:-1]

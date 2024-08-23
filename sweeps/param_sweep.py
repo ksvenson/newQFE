@@ -22,7 +22,7 @@ import pickle as pkl
 import multiprocessing as mp
 
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
-CORES_PER_NODE = 40  # on the lq1 cluster the the Fermilab Lattice QCD Facility 
+CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
 BETA_DECIMALS = 6  # beta is written in the data filenames with 6 decimal points
 
 PROGRAM = 'ising_cubic'
@@ -38,12 +38,12 @@ FIG_SAVE_OPTIONS = {'bbox_inches': 'tight'}
 
 class Stat():
     """
-    A class that helps ing plotting observables.
+    A class that helps with plotting observables.
     """
     def __init__(self, label, axis=None, plot=False):
         """
         `label`: A reference to this statistic used in code. Ex: 'eng_var'.
-        `axis`: How this statistic should be named in a plot. Ex: 'Energy Variance'.
+        `axis`: How this statistic should be rendered in a plot. Ex: 'Energy Variance'.
         `plot`: Set to `True` if you want this statistic to be plotted.
         """
         self.label=label
@@ -74,7 +74,7 @@ class Sweep():
         `nwolff`: Number of wolff updates to perform between each independent lattice. Set to `None` to use the Swendsen-Wang algorithm.
         """
         
-        # Checks to make sure all arrays have the right shape
+        # Checks to make sure all arrays have the correct shape
         assert len(k) == len(SC_IDX + FCC_IDX + BCC_IDX)
         assert len(beta.shape) - 1 == len(k)
         for i, ki in enumerate(k):
@@ -188,6 +188,10 @@ class Sweep():
     def write_multi_hist_script(self):
         """
         Writes a batch script to perform a multiple histogram analysis on the lq1 cluster.
+
+        To run this script, run:
+        $ sbatch `self.multi_hist_batch`
+        on the lq1 cluster.
         """
         with open(self.multi_hist_batch, 'w', newline='\n') as f:
             f.write('#!/bin/sh\n')
@@ -208,8 +212,8 @@ class Sweep():
 
     def get_data_fnames(self, idx):
         """
-        Get the filenames corresponding to the configuration `self.beta[idx]`.
-        `idx` points to the temperature and all coupling parameters.
+        Get the filenames corresponding to the configuration `idx`.
+        `idx` points to a specific value of beta and all coupling parameters.
         There will be `len(self.seeds)` such filenames.
         """
         dir = f'{self.data_dir}/'
@@ -271,9 +275,8 @@ class Sweep():
               [ arr 2]   ,
            [ arr 3]      ]
         
-        wher the blank spaces are filled with `np.nan`.
+        where the blank spaces are filled with `np.nan`.
         
-
         `data` should have >=3 dimensions. The first dimenions are for the configruations of k.
         The second to last dimension is for beta.
         The last dimension is an array of observables.
@@ -287,7 +290,7 @@ class Sweep():
         """
         Makes a heat map/surface plot of all the observables in `obs`.
         On the vertical axis is the coupling parameter correponding to `free_idx`. All other coupling parameters are fixed by `config_idx`.
-        On the horizontal axis is temperature.
+        On the horizontal axis is beta.
 
         If `surface` is False, makes a heat map. Else, makes a surface plot.
         """
@@ -365,7 +368,7 @@ class Sweep():
         
         self.create(self.base_dir + '_rw')
 
-    def refine_beta(self, step_size=0.0001, num_steps=20):
+    def refine_beta(self, step_size=0.001, num_steps=20):
         """
         Creates a new `Sweep` object and directory with a beta range that only samples around criticality.
 
@@ -378,7 +381,7 @@ class Sweep():
         eng_var = var[..., Sweep.get_idxes('energy')]
         eng_var = eng_var[..., np.array(FCC_IDX)]  # Edit this line if using a different type of lattice.
 
-        max_eng_var = np.argmax(eng_var, axis=-2)  # find maximum along temperature axis
+        max_eng_var = np.argmax(eng_var, axis=-2)  # find maximum along beta axis
         max_eng_var = np.mean(max_eng_var, axis=-1).astype(int)  # average over all directions
         beta_crit = np.take_along_axis(self.beta, max_eng_var[..., np.newaxis], axis=-1).reshape(self.beta.shape[:-1])
         beta_increments = step_size * (np.arange(2*num_steps + 1) - num_steps)
@@ -444,8 +447,8 @@ class Sweep():
 
         # Preparing observables
         obs = raw[..., Sweep.plot_mask]
-        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across temperature and samples
-        obs -= offset                      # Ensure we only work with non-negative numbers
+        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across beta and samples
+        obs -= offset                      # Ensure we only work with positive numbers
         obs = np.log(obs)                  # We calculate the log of the expectation value
         
         # Computing averages
@@ -466,7 +469,7 @@ class Sweep():
 
     def eng_hist(self, config_idx):
         """
-        Creates a histogram of all energies measured corresponding to `config_idx`.
+        Creates a histogram of all measured energies corresponding to `config_idx`.
         Entries are color-coded according to what temperature they came from.
         """
         raw = self.get_raw(config_idx)
@@ -555,8 +558,8 @@ if __name__ == '__main__':
     parser.add_argument('--sw', action='store_true', help='Initialize sweep using Swendsen-Wang algorithm. Otherwise, use Wolff algorithm.')
     parser.add_argument('--ntraj', default=int(1e3), type=int, help='Number of samples to take for each rng seed.')
     parser.add_argument('--seeds', default=10, type=int, help='Number of rng seeds to use.')
-    parser.add_argument('--beta-step', default=0.001, type=float, help='Used with --init and --refine-beta')
-    parser.add_argument('--num-beta-steps', default=20, type=float, help='Only used with --refine-beta')
+    parser.add_argument('--beta-step', default=0.001, type=float, help='Used with --init and --refine-beta.')
+    parser.add_argument('--num-beta-steps', default=20, type=float, help='Number of steps to take in each direction. Only used with --refine-beta.')
 
     parser.add_argument('--init', action='store_true', help='Create new sweep.')
     parser.add_argument('--analysis', action='store_true', help='Make plots of all measured observables.')
@@ -568,7 +571,7 @@ if __name__ == '__main__':
     parser.add_argument('--multi-hist-plot', action='store_true', help='Plot the results of a multiple histogram analysis.')
     parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit Python script directly to pick which configuration.')
     parser.add_argument('--calc-comp', help='Perform and save a Kolmogorov–Smirnov test between the sweeps located at the directories specified by --base and --calc_comp.')
-    parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test')
+    parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test.')
     args = parser.parse_args()
 
     requires_load_list = [args.analysis,

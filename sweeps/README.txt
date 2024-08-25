@@ -36,4 +36,5 @@ $ python param_sweep.py --base my_sweep --analysis
 This will compute the average and variance of all observables, and make a plot placing temperature on one axis, and a coupling parameter on the other. To specify the type of plot, the configuration, and the specific coupling parameter to have on the axis, edit `param_sweep.py` directly.
 
 Notes:
- - Some older sweeps (150824 and earlier) have an attribute `seed`, which is a single int for the rng seed. They lack the attributes `seeds` (a list of ints), 
+ - Some older sweeps may have an attribute `seed`, which is a single int for the rng seed. They lack the attributes `seeds` (a list of ints) and `n_samples` (`ntraj * len(seeds)`). These older sweeps may also have an extra attribute `sw`, which is `True` if they used the Swendsen-Wang algorithm, and `False` if they used the Wolff algorithm. If `sw` is `True`, then the sweep may be missing the `nwolff` parameter. To correct this issue, just set `nwolff = None`.
+ 

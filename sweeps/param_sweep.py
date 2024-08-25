@@ -5,7 +5,7 @@ Author: Kai Svenson
 Contact: kai.svenson628@gmail.com
 Github: https://github.com/ksvenson/newQFE
 
-Performs a parameter sweep and analysis of the 3d affine-transformed Ising model using `PROGRAM`.
+Perform parameter sweeps and analyses of the 3d affine-transformed Ising model using `PROGRAM`.
 
 TODO: Do not loop over configruations of k that are permutations of each other.
 TODO: Investigate better estimator for the variance in `Sweep.multi_hist_step`.
@@ -66,12 +66,26 @@ class Sweep():
         Initalize a parameter sweep.
         `nx`, `ny`, `nz`: Number of lattice sites along x, y, and z directions.
         `seeds`: A list of (ideally prime) numbers to be used as rng seeds.
-        `beta`: All temperatures to simulate. Unique for each configuration of `k`.
+        `beta`: See below. 
         `ntherm`: Number of independent lattices to generate before measuring observables (for lattice to "thermalize").
         `ntraj`: Number of samples to take for a single rng seed. Total number of samples will be `len(seeds) * ntraj`.
         `base_dir`: Directory to store all necessary files.
-        `k`: All coupling parameters to simulate.
-        `nwolff`: Number of wolff updates to perform between each independent lattice. Set to `None` to use the Swendsen-Wang algorithm.
+        `k`: See below.
+        `nwolff`: See below.
+
+        Here we provide a description of how a parameter sweep is implemented. The Ising action we simulate has `C = len(SC_IDX + FCC_IDX + BCC_IDX)` coupling parameters, and one temperature parameter. This makes `C+1` parameters in total. `k` is a list with length `C`. Each index of `k` corresponds to a direction given by `SC_IDX + FCC_IDX + BCC_IDX`. Each element of `k` is itself a list providing the coupling parameter values to sweep over. For example,
+
+        ```
+        k = [[0], [0], [0],
+              [1], [1], [1], [1], [1], [0.95, 1, 1.05],
+              [0], [0], [0], [0]]
+        ```
+
+        would simulate the FCC lattice. Only the coupling parameter in the last direction is varied, taking the values 0.95, 1, and 1.05. With this setup, `C` indices define a set of coupling paramters. Such a set of `C` indices will be named `config_idx` in this class.
+
+        `beta` is a `C+1` dimensional array. `beta[config_idx]` is a list of temperatures to simulate under the configuration given by `config_idx`.
+
+        `nwolff` is also a `C+1` dimensional array. At each configuration and temperature, it contains the number of Wolff updates to perform between each independent lattice. Set `nwolff = None` to use the Swendsen-Wang algorithm.
         """
         
         # Checks to make sure all arrays have the correct shape
@@ -237,7 +251,7 @@ class Sweep():
 
         This is the only method that reads from the data files for the sake of consistency.
         """
-        raw = np.full(self.beta.shape[-1] + (self.n_samples, len(Sweep.headers)), np.nan)
+        raw = np.full((self.beta.shape[-1], self.n_samples, len(Sweep.headers)), np.nan)
         for beta_idx in range(raw.shape[0]):
             fnames = self.get_data_fnames(config_idx + (beta_idx,))
             for seed_idx, fname in enumerate(fnames):
@@ -565,11 +579,11 @@ if __name__ == '__main__':
     parser.add_argument('--analysis', action='store_true', help='Make plots of all measured observables.')
     parser.add_argument('--refine-nwolff', action='store_true', help='Create new sweep with improved nwolff parameter.')
     parser.add_argument('--refine-beta', action='store_true', help='Create new sweep which only samples around criticality.')
-    parser.add_argument('--edit', action='store_true', help='No specific purpose. Edit Python script to perform any edits you need.')
-    parser.add_argument('--multi-hist-local', action='store_true', help='Writes a batch script to be sent to the lq1 cluster.')
+    parser.add_argument('--edit', action='store_true', help='No specific purpose. Edit this Python script to perform any edits you need.')
+    parser.add_argument('--multi-hist-local', action='store_true', help='Writes a batch script for a multiple histogram analysis to be sent to the lq1 cluster.')
     parser.add_argument('--multi-hist-cluster', action='store_true', help='Performs a multiple histogram analysis on existing data. Resource intensive. Intended to only be used on the lq1 cluster.')
     parser.add_argument('--multi-hist-plot', action='store_true', help='Plot the results of a multiple histogram analysis.')
-    parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit Python script directly to pick which configuration.')
+    parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit this Python script directly to pick which configuration.')
     parser.add_argument('--calc-comp', help='Perform and save a Kolmogorov–Smirnov test between the sweeps located at the directories specified by --base and --calc_comp.')
     parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test.')
     args = parser.parse_args()

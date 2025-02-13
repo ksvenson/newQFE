@@ -21,6 +21,10 @@ import os
 import pickle as pkl
 import multiprocessing as mp
 
+import sys
+sys.path.insert(1, 'C:/cygwin64/home/Kaironium/projects/maf-pytorch/maf')
+import learn_dist
+
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
 CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
 BETA_DECIMALS = 6  # beta is written in the data filenames with 6 decimal points
@@ -180,7 +184,7 @@ class Sweep():
             f.write('module load parallel\n')
             f.write('\n')
             f.write(f'srun --ntasks 1 --cpus-per-task {CORES_PER_NODE} parallel -j {CORES_PER_NODE} -a {self.commands}\n')
-        with open (self.commands, 'w', newline='\n') as f:
+        with open(self.commands, 'w', newline='\n') as f:
             count = 1
             for idx in np.ndindex(self.beta.shape):
                 for seed in self.seeds:
@@ -586,6 +590,7 @@ if __name__ == '__main__':
     parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit this Python script directly to pick which configuration.')
     parser.add_argument('--calc-comp', help='Perform and save a Kolmogorov–Smirnov test between the sweeps located at the directories specified by --base and --calc_comp.')
     parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test.')
+    parser.add_argument('--learn', action='store_true', help='Test masked autoregressive flow methods.')
     args = parser.parse_args()
 
     requires_load_list = [args.analysis,
@@ -597,7 +602,8 @@ if __name__ == '__main__':
                           args.multi_hist_plot,
                           args.eng_hist,
                           args.calc_comp,
-                          args.plot_comp]
+                          args.plot_comp,
+                          args.learn]
     requires_load = False
     for flag in requires_load_list:
         if flag:
@@ -658,9 +664,13 @@ if __name__ == '__main__':
             sweep.refine_beta(step_size=args.beta_step, num_steps=args.num_beta_steps)
 
         if args.edit:
-            print(sweep.beta.shape)
             # Perform any edits you want here
-            sweep.create(sweep.base_dir)
+            raw = np.full(sweep.beta.shape + (sweep.n_samples, len(Sweep.headers)), np.nan)
+            for idx in np.ndindex(sweep.beta.shape):
+                fnames = sweep.get_data_fnames(idx)
+                for seed_idx, fname in enumerate(fnames):
+                    raw[idx + (slice(seed_idx * sweep.ntraj, (seed_idx + 1) * sweep.ntraj),)] = np.genfromtxt(fname, delimiter=' ')
+            np.save(f'{sweep.base_dir}.npy', raw)
 
         if args.multi_hist_local:
             sweep.write_multi_hist_script()
@@ -695,3 +705,6 @@ if __name__ == '__main__':
                 args.plot_comp = args.plot_comp[:-1]
             other = Sweep.load(args.plot_comp)
             sweep.plot_comp_sweeps(other, (0,)*13, FCC_IDX[-1])
+
+        if args.learn:
+            print(learn_dist.get_dist)

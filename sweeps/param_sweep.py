@@ -7,7 +7,7 @@ Github: https://github.com/ksvenson/newQFE
 
 Perform parameter sweeps and analyses of the 3d affine-transformed Ising model using `PROGRAM`.
 
-TODO: Do not loop over configruations of k that are permutations of each other.
+TODO: Do not loop over configurations of k that are permutations of each other.
 TODO: Investigate better estimator for the variance in `Sweep.multi_hist_step`.
       Existing one is straight-forward, but the author is investigating other (less-trivial) estimators that could be better.
 """
@@ -20,10 +20,6 @@ import matplotlib as mpl
 import os
 import pickle as pkl
 import multiprocessing as mp
-
-import sys
-sys.path.insert(1, 'C:/cygwin64/home/Kaironium/projects/maf-pytorch/maf')
-import learn_dist
 
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
 CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
@@ -59,7 +55,7 @@ class Sweep():
     Keeps track of and organizes all parameters/files needed for a parameter sweep.
     """
     # `headers` are the columns of the .obs files created by `PROGRAM`.
-    headers = [Stat('generation'), Stat('flip_metric', axis='Flip Metric', plot=True)]
+    headers = [Stat('generation'), Stat('flip_metric', axis='Flip Metric', plot=False)]
     for i in range(13):
         headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} Energy', plot=True))
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
@@ -670,7 +666,9 @@ if __name__ == '__main__':
                 fnames = sweep.get_data_fnames(idx)
                 for seed_idx, fname in enumerate(fnames):
                     raw[idx + (slice(seed_idx * sweep.ntraj, (seed_idx + 1) * sweep.ntraj),)] = np.genfromtxt(fname, delimiter=' ')
-            np.save(f'{sweep.base_dir}.npy', raw)
+            np.save(f'{sweep.base_dir}_obs.npy', raw)
+            np.savez(f'{sweep.base_dir}_k.npz', *sweep.k)
+            np.save(f'{sweep.base_dir}_beta.npy', sweep.beta)
 
         if args.multi_hist_local:
             sweep.write_multi_hist_script()

@@ -21,6 +21,10 @@ import os
 import pickle as pkl
 import multiprocessing as mp
 
+import sys
+sys.path.append('../..')  # TODO Should find more robust way of importing pytorch methods
+from maf_pytorch import learn_dist
+
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
 CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
 BETA_DECIMALS = 6  # beta is written in the data filenames with 6 decimal points
@@ -56,8 +60,9 @@ class Sweep():
     """
     # `headers` are the columns of the .obs files created by `PROGRAM`.
     headers = [Stat('generation'), Stat('flip_metric', axis='Flip Metric', plot=False)]
-    for i in range(13):
-        headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} Energy', plot=True))
+    for i in range(len(SC_IDX + FCC_IDX + BCC_IDX)):
+        # headers.append(Stat(f'k{i}_energy', axis=f'Direction {i} Energy', plot=True))
+        headers.append(Stat(f'k{i-2}_energy', axis=f'Direction {i-2} Energy', plot=True))
     headers.append(Stat('magnetization', axis='Magnetization', plot=True))
     plot_mask = np.array([stat.plot for stat in headers])
     
@@ -117,7 +122,6 @@ class Sweep():
         with open(base_dir + '/params.pkl', 'rb') as f:
             sweep = pkl.load(f)
             sweep.create(base_dir)
-            sweep.save()
             return sweep
 
     @classmethod
@@ -256,6 +260,7 @@ class Sweep():
             fnames = self.get_data_fnames(config_idx + (beta_idx,))
             for seed_idx, fname in enumerate(fnames):
                 raw[beta_idx, seed_idx * self.ntraj : (seed_idx + 1) * self.ntraj] = np.genfromtxt(fname, delimiter=' ')
+        raw[..., Sweep.plot_mask] /= self.nx * self.ny * self.nz
         return raw
 
     def read_avg_var(self):
@@ -324,7 +329,7 @@ class Sweep():
                     fig, ax = plt.subplots()
                     pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', **pcolormesh_kwargs)
                     fig.colorbar(pcm)
-                ax.set(xlabel=r'$\beta$', ylabel=rf'$k_{free_idx}$', title=f'{self.base_dir}\n{stat.axis}')
+                ax.set(xlabel=r'$\beta$', ylabel=rf'$K_{free_idx-2}$', title=stat.axis)
                 fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)
                 plt.close()
 
@@ -538,6 +543,42 @@ class Sweep():
                   'norm': 'log'}
         self.obs_plot(p_vals, stats, config_idx, free_idx, self.k[free_idx], self.beta, pcolormesh_kwargs=kwargs)
 
+    def learn_dist(self, save_name, model='made', hidden_dims=[100, 100], num_ar_layers=None, alternate=None, num_components=None, bn=True, obs_mask_arg=None, k_mask_arg=None):
+        obs_mask = Sweep.plot_mask
+        k_mask = np.full(len(self.k), True)
+        if obs_mask_arg is not None:
+            obs_mask = obs_mask_arg
+        if k_mask_arg is not None:
+            k_mask = k_mask_arg
+        
+        # First, we format all of our data into the form accepted by the neural network.
+        len_k = np.count_nonzero(k_mask)
+        len_obs = np.count_nonzero(obs_mask)
+        train_data = np.full(self.beta.shape + (self.n_samples, len_k + 1 + len_obs), np.nan)
+        for config_idx in np.ndindex(self.beta.shape[:-1]):
+            all_k_vals = np.array([self.k[k_idx][idx] for k_idx, idx in enumerate(config_idx)])
+            train_data[config_idx][..., :len_k] = all_k_vals[k_mask]
+            train_data[config_idx][..., len_k] = self.beta[config_idx][:, np.newaxis]
+            train_data[config_idx][..., len_k + 1:] = self.get_raw(config_idx)[..., obs_mask]
+        train_data = train_data.reshape(-1, train_data.shape[-1])
+
+        # FIXME: this just for testing to run faster
+        # train_data = train_data[:10]
+
+        # randomize order of train data so batch normalization works effectively
+        # np.random.shuffle(train_data)
+
+        learn_dist.get_dist(train_data, 
+                            f'{self.base_dir}/{save_name}',
+                            model=model,
+                            data_dim=len_obs,
+                            cond_dim=len_k+1, 
+                            hidden_dims=hidden_dims,
+                            num_ar_layers=num_ar_layers,
+                            alternate=alternate,
+                            num_components=num_components,
+                            bn=bn)
+
 def get_seeds(n):
     """
     Get `n` prime numbers starting with 1009. Used for rng seeds.
@@ -661,14 +702,28 @@ if __name__ == '__main__':
 
         if args.edit:
             # Perform any edits you want here
-            raw = np.full(sweep.beta.shape + (sweep.n_samples, len(Sweep.headers)), np.nan)
-            for idx in np.ndindex(sweep.beta.shape):
-                fnames = sweep.get_data_fnames(idx)
-                for seed_idx, fname in enumerate(fnames):
-                    raw[idx + (slice(seed_idx * sweep.ntraj, (seed_idx + 1) * sweep.ntraj),)] = np.genfromtxt(fname, delimiter=' ')
-            np.save(f'{sweep.base_dir}_obs.npy', raw)
-            np.savez(f'{sweep.base_dir}_k.npz', *sweep.k)
-            np.save(f'{sweep.base_dir}_beta.npy', sweep.beta)
+
+            dist = torch.load('./dist_010525.pth', weights_only=False)
+            x = torch.linspace(0, 15, 200)
+            y = torch.linspace(-20, 20, 200)
+
+            dist.eval()
+
+
+            k = list(np.load('./sweep_150824_sw_coarse_k.npz').values())[8]
+            beta = np.load('./sweep_150824_sw_coarse_beta.npy')
+            beta = beta[(0,)*(beta.ndim - 1)]
+
+            display_2d_uncond(dist, data, 'made', 'no_bn_last', x, y, k[-1], beta[-1])
+    
+            # raw = np.full(sweep.beta.shape + (sweep.n_samples, len(Sweep.headers)), np.nan)
+            # for idx in np.ndindex(sweep.beta.shape):
+            #     fnames = sweep.get_data_fnames(idx)
+            #     for seed_idx, fname in enumerate(fnames):
+            #         raw[idx + (slice(seed_idx * sweep.ntraj, (seed_idx + 1) * sweep.ntraj),)] = np.genfromtxt(fname, delimiter=' ')
+            # np.save(f'{sweep.base_dir}_obs.npy', raw)
+            # np.savez(f'{sweep.base_dir}_k.npz', *sweep.k)
+            # np.save(f'{sweep.base_dir}_beta.npy', sweep.beta)
 
         if args.multi_hist_local:
             sweep.write_multi_hist_script()
@@ -705,4 +760,20 @@ if __name__ == '__main__':
             sweep.plot_comp_sweeps(other, (0,)*13, FCC_IDX[-1])
 
         if args.learn:
-            print(learn_dist.get_dist)
+            k_mask = np.arange(len(SC_IDX + FCC_IDX + BCC_IDX)) == FCC_IDX[-1]
+            obs_mask = np.full(len(Sweep.plot_mask), False)
+            obs_mask[2 + FCC_IDX[-1]] = True
+            obs_mask[-1] = True
+
+            sweep.learn_dist('dist_080525',
+                             model='maf-mog',
+                             num_ar_layers=2,
+                             num_components=2,
+                             alternate=False,
+                             obs_mask_arg=obs_mask,
+                             k_mask_arg=k_mask)
+
+            # sweep.learn_dist('dist_050725',
+            #                  model='made',
+            #                  obs_mask_arg=obs_mask,
+            #                  k_mask_arg=k_mask)

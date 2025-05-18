@@ -37,7 +37,7 @@ SC_IDX = (0, 1, 2)
 FCC_IDX = (3, 4, 5, 6, 7, 8)
 BCC_IDX = (9, 10, 11, 12)
 
-FIG_SAVE_OPTIONS = {'bbox_inches': 'tight'}
+FIG_SAVE_OPTIONS = {'bbox_inches': 'tight', 'dpi': 1000}
 
 
 class Stat():
@@ -327,7 +327,7 @@ class Sweep():
                     ax.plot_surface(*np.meshgrid(beta_union, k_space), plot_obs[..., stat_idx])
                 else:
                     fig, ax = plt.subplots()
-                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', **pcolormesh_kwargs)
+                    pcm = ax.pcolormesh(beta_union, k_space, plot_obs[..., stat_idx], shading='nearest', rasterized=True, **pcolormesh_kwargs)
                     fig.colorbar(pcm)
                 ax.set(xlabel=r'$\beta$', ylabel=rf'$K_{free_idx-2}$', title=stat.axis)
                 fig.savefig(f'{self.figs_dir}/{stat.label}.svg', **FIG_SAVE_OPTIONS)

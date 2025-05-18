@@ -471,10 +471,6 @@ class Sweep():
         obs = np.log(obs)                  # We calculate the log of the expectation value
 
         # Computing total weight
-        print(f'obs shape: {obs.shape}')
-        print(f'dem shape: {denominator.shape}')
-        print(f'interp_log_Z shape: {interp_log_Z.shape}')
-        print(f'offset shape: {offset.shape}')
         weight = denominator - interp_log_Z - np.log(self.n_samples)
         weight_sum = np.exp(sp.special.logsumexp(weight, axis=(0, 1)))[:, np.newaxis]
         weight2_sum = np.exp(sp.special.logsumexp(2*weight, axis=(0, 1)))[:, np.newaxis]

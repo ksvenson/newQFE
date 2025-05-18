@@ -444,7 +444,7 @@ class Sweep():
         
         # Iteration do-while loop.
         print(f'{config_idx} Entering iteration loop')
-        while True:
+        while False:
             new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)  # sum over j
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))          # sum over i and s
             new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
@@ -469,19 +469,39 @@ class Sweep():
         offset = obs.min(axis=(0, 1)) - 1  # Find minimum across beta and samples
         obs -= offset                      # Ensure we only work with positive numbers
         obs = np.log(obs)                  # We calculate the log of the expectation value
+
+        # Computing total weight
+        print(f'obs shape: {obs.shape}')
+        print(f'dem shape: {denominator.shape}')
+        print(f'interp_log_Z shape: {interp_log_Z.shape}')
+        print(f'offset shape: {offset.shape}')
+        weight = denominator - interp_log_Z - np.log(self.n_samples)
+        weight_sum = np.exp(sp.special.logsumexp(weight, axis=(0, 1)))[:, np.newaxis]
+        weight2_sum = np.exp(sp.special.logsumexp(2*weight, axis=(0, 1)))[:, np.newaxis]
+        offset = offset[np.newaxis, :]
         
         # Computing averages
-        avg = obs[..., np.newaxis, :] + denominator[..., np.newaxis]  # Q_{is} / denominator
-        avg = sp.special.logsumexp(avg, axis=(0, 1))                  # sum over i and s
-        avg -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)   # divide by Z(\beta) and n_j
-        avg = np.exp(avg) + offset                                    # undo log and offset
+        # avg = obs[..., np.newaxis, :] + denominator[..., np.newaxis]  # Q_{is} / denominator
+        # avg = sp.special.logsumexp(avg, axis=(0, 1))                  # sum over i and s
+        # avg -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)   # divide by Z(\beta) and n_j
+        # avg = np.exp(avg) + offset                                    # undo log and offset
+        avg = np.exp(sp.special.logsumexp(obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
+        avg = avg + offset * weight_sum # undo log and offset
 
         # Computing obs**2 so we can compute the variance
-        var = 2 * obs[..., np.newaxis, :] + denominator[..., np.newaxis]  # Q_{is}^2 / denominator
-        var = sp.special.logsumexp(var, axis=(0, 1))                      # sum over i and s
-        var -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)       # divide by Z(\beta) and n_j
-        # FIXME: There could be a better estimator for the variance, see TODO at top of file.
-        var = np.exp(var) + 2 * offset * avg - offset**2 - avg**2         # This correction is needed since we computed \expval{(obs - offset)^2}
+        # var = 2 * obs[..., np.newaxis, :] + denominator[..., np.newaxis]  # Q_{is}^2 / denominator
+        # var = sp.special.logsumexp(var, axis=(0, 1))                      # sum over i and s
+        # var -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)       # divide by Z(\beta) and n_j
+        # # FIXME: There could be a better estimator for the variance, see TODO at top of file.
+        # var = np.exp(var) + 2 * offset * avg - offset**2 - avg**2         # This correction is needed since we computed \expval{(obs - offset)^2}
+        avg2 = np.exp(sp.special.logsumexp(2 * obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
+        avg2 = avg2 + 2*offset*avg - offset**2 * weight_sum
+
+        w_avg = np.exp(sp.special.logsumexp(obs[..., np.newaxis, :] + 2 * weight[..., np.newaxis], axis=(0, 1)))
+        w_avg2 = np.exp(sp.special.logsumexp(2*obs[..., np.newaxis, :] + 2*weight[..., np.newaxis], axis=(0, 1)))
+        w_avg2 = w_avg2 + 2*offset*w_avg - offset**2 * weight2_sum
+
+        var = avg2 - avg**2 - (1/(self.beta.shape[-1] * self.n_samples)) * (w_avg2 - avg**2)
         
         print(f'{config_idx} completed')
         return np.stack((avg, var))
@@ -702,6 +722,9 @@ if __name__ == '__main__':
 
         if args.edit:
             # Perform any edits you want here
+
+            sweep.multi_hist_step((0,)*len(sweep.k), sweep.beta[..., :10])
+            quit()
 
             dist = torch.load('./dist_010525.pth', weights_only=False)
             x = torch.linspace(0, 15, 200)

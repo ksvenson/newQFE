@@ -424,7 +424,7 @@ class Sweep():
         var = res[:, 1].reshape(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),))
         np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
 
-    def multi_hist_step(self, config_idx, interp_beta, tol=1e-2):
+    def multi_hist_step(self, config_idx, interp_beta, tol=1e-3):
         """
         Performs a multiple histogram analysis with all observables corresponding to `config_idx`.
         See Newman and Barkema, Section 8.2.
@@ -450,11 +450,10 @@ class Sweep():
             new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
 
             convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
             if convergence_metric < tol:
                 break
             log_Z = new_log_Z
-            
-            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
         print(f'{config_idx} Exited iteration loop')
 
         # Now we interpolate using Equation 8.39.
@@ -472,8 +471,8 @@ class Sweep():
 
         # Computing total weight
         weight = denominator - interp_log_Z - np.log(self.n_samples)
-        weight_sum = np.exp(sp.special.logsumexp(weight, axis=(0, 1)))[:, np.newaxis]
-        weight2_sum = np.exp(sp.special.logsumexp(2*weight, axis=(0, 1)))[:, np.newaxis]
+        # weight_sum = np.exp(sp.special.logsumexp(weight, axis=(0, 1)))[:, np.newaxis]
+        # weight2_sum = np.exp(sp.special.logsumexp(2*weight, axis=(0, 1)))[:, np.newaxis]
         offset = offset[np.newaxis, :]
         
         # Computing averages
@@ -482,22 +481,27 @@ class Sweep():
         # avg -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)   # divide by Z(\beta) and n_j
         # avg = np.exp(avg) + offset                                    # undo log and offset
         avg = np.exp(sp.special.logsumexp(obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
-        avg = avg + offset * weight_sum # undo log and offset
+        avg = avg + offset # undo offset
 
         # Computing obs**2 so we can compute the variance
         # var = 2 * obs[..., np.newaxis, :] + denominator[..., np.newaxis]  # Q_{is}^2 / denominator
         # var = sp.special.logsumexp(var, axis=(0, 1))                      # sum over i and s
         # var -= interp_log_Z[:, np.newaxis] + np.log(self.n_samples)       # divide by Z(\beta) and n_j
-        # # FIXME: There could be a better estimator for the variance, see TODO at top of file.
+        # FIXME: There could be a better estimator for the variance, see TODO at top of file.
         # var = np.exp(var) + 2 * offset * avg - offset**2 - avg**2         # This correction is needed since we computed \expval{(obs - offset)^2}
-        avg2 = np.exp(sp.special.logsumexp(2 * obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
-        avg2 = avg2 + 2*offset*avg - offset**2 * weight_sum
+        
+        # avg2 = np.exp(sp.special.logsumexp(2 * obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
+        # avg2 = avg2 + 2*offset*avg - offset**2 * weight_sum
 
-        w_avg = np.exp(sp.special.logsumexp(obs[..., np.newaxis, :] + 2 * weight[..., np.newaxis], axis=(0, 1)))
-        w_avg2 = np.exp(sp.special.logsumexp(2*obs[..., np.newaxis, :] + 2*weight[..., np.newaxis], axis=(0, 1)))
-        w_avg2 = w_avg2 + 2*offset*w_avg - offset**2 * weight2_sum
+        # w_avg = np.exp(sp.special.logsumexp(obs[..., np.newaxis, :] + 2 * weight[..., np.newaxis], axis=(0, 1)))
+        # w_avg2 = np.exp(sp.special.logsumexp(2*obs[..., np.newaxis, :] + 2*weight[..., np.newaxis], axis=(0, 1)))
+        # w_avg2 = w_avg2 + 2*offset*w_avg - offset**2 * weight2_sum
 
-        var = avg2 - avg**2 - (1/(self.beta.shape[-1] * self.n_samples)) * (w_avg2 - avg**2)
+        # var = avg2 - avg**2 - (1/(self.beta.shape[-1] * self.n_samples)) * (w_avg2 - avg**2)
+        total_N = obs.shape[0] * obs.shape[1]
+        var = np.exp(sp.special.logsumexp(2 * obs[..., np.newaxis, :] + weight[..., np.newaxis], axis=(0, 1)))
+        var += ((1-total_N)/total_N) * avg**2
+        var -= (1/total_N) * np.exp(sp.special.logsumexp(2 * obs[..., np.newaxis, :] + 2 * weight[..., np.newaxis], axis=(0, 1)))
         
         print(f'{config_idx} completed')
         return np.stack((avg, var))

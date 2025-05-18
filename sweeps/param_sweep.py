@@ -444,7 +444,7 @@ class Sweep():
         
         # Iteration do-while loop.
         print(f'{config_idx} Entering iteration loop')
-        while False:
+        while True:
             new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)  # sum over j
             new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))          # sum over i and s
             new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)

@@ -248,7 +248,7 @@ class Sweep():
             fnames.append(path)
         return fnames
 
-    def get_raw(self, config_idx):
+    def get_raw(self, config_idx, abs_mag=True):
         """
         Returns a numpy array with all data corresponding to the configuration `config_idx`.
         `config_idx` points to all coupling parameters, and a range of beta.
@@ -261,6 +261,8 @@ class Sweep():
             for seed_idx, fname in enumerate(fnames):
                 raw[beta_idx, seed_idx * self.ntraj : (seed_idx + 1) * self.ntraj] = np.genfromtxt(fname, delimiter=' ')
         raw[..., Sweep.plot_mask] /= self.nx * self.ny * self.nz
+        if abs_mag:
+            raw[..., -1] = np.abs(raw[..., -1])
         return raw
 
     def read_avg_var(self):
@@ -506,7 +508,7 @@ class Sweep():
         print(f'{config_idx} completed')
         return np.stack((avg, var))
 
-    def eng_hist(self, config_idx):
+    def eng_hist(self, config_idx, title):
         """
         Creates a histogram of all measured energies corresponding to `config_idx`.
         Entries are color-coded according to what temperature they came from.
@@ -516,7 +518,7 @@ class Sweep():
         energy = -1 * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)
 
         fig, ax = plt.subplots()
-        num_bins = get_num_bins(energy)
+        num_bins = 10*get_num_bins(energy)
 
         cmap = plt.get_cmap('viridis_r')
         colors = cmap(np.linspace(0, 1, energy.shape[0]))
@@ -527,8 +529,8 @@ class Sweep():
         cbar = fig.colorbar(sm, ax=ax, orientation='horizontal')
         cbar.set_label(r'$\beta$')
 
-        ax.set(xlabel='Energy', ylabel='Counts', title=f'Energy Histogram for Configuration {config_idx}')
-        fig.savefig(f'{self.figs_dir}/eng_hist.svg', **FIG_SAVE_OPTIONS)
+        ax.set(xlabel='Energy Density', ylabel='Counts', title=title)
+        fig.savefig(f'{self.figs_dir}/eng_hist.png', **FIG_SAVE_OPTIONS)
         plt.close()
 
     def comp_sweeps(self, other):
@@ -768,7 +770,7 @@ if __name__ == '__main__':
             config_idx[FCC_IDX[-1]] = len(sweep.k[FCC_IDX[-1]]) // 2
             config_idx = tuple(config_idx)
 
-            sweep.eng_hist(config_idx)
+            sweep.eng_hist(config_idx, rf'Emperical Energy Distribution for Configuration $K_6=1$')
         
         if args.calc_comp:
             if args.calc_comp.endswith('/'):

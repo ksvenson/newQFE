@@ -23,7 +23,6 @@ import multiprocessing as mp
 
 import sys
 sys.path.append('../..')  # TODO Should find more robust way of importing pytorch methods
-from maf_pytorch import learn_dist
 
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
 CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
@@ -462,43 +461,40 @@ class Sweep():
             new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
 
             convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            log_Z = new_log_Z
             print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
             if convergence_metric < tol:
                 break
-            log_Z = new_log_Z
         print(f'{config_idx} Exited iteration loop')
 
+        # Preparing observables
+        obs = raw[..., Sweep.plot_mask]
+        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across beta and samples
+        obs -= offset                      # Ensure we only work with positive numbers
+        obs = np.log(obs)                  # We calculate the log of the expectation value
+        
         # We need to manually loop through `interp_beta` to avoid running out of memory.
         avg = np.full((interp_beta.shape[-1], np.count_nonzero(Sweep.plot_mask)), np.nan)
         var = np.full(avg.shape, np.nan)
         for beta_idx, beta in enumerate(interp_beta[config_idx]):
-            # Now we interpolate using Equation 8.39.
-            # beta_diff = np.add.outer(interp_beta[config_idx], -1 * beta_space)  # \beta - \beta_j
-            # beta_diff = beta - beta_space
-            # exponent = np.multiply.outer(energy, beta_diff)                     # E_{is} * (\beta - \beta_j)
-            exponent = np.multiply.outer(energy, beta - beta_space)                     # E_{is} * (\beta - \beta_j)
-            denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)  # sum over j
-            interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))       # sum over i and s
-            interp_log_Z -= np.log(self.n_samples)                              # divide by n_j (which in constant in our case)
-
-            # Preparing observables
-            obs = raw[..., Sweep.plot_mask]
-            offset = obs.min(axis=(0, 1)) - 1  # Find minimum across beta and samples
-            obs -= offset                      # Ensure we only work with positive numbers
-            obs = np.log(obs)                  # We calculate the log of the expectation value
+            exponent = np.multiply.outer(energy, beta - beta_space)                                      # E_{is} * (\beta - \beta_j)
+            denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1) - np.log(self.n_samples)  # sum over j
+            interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))                                # sum over i and s
 
             # Computing total weight
-            weight = denominator - interp_log_Z - np.log(self.n_samples)
+            weight = denominator - interp_log_Z
             
             # Computing averages
             avg[beta_idx] = np.exp(sp.special.logsumexp(obs + weight[..., np.newaxis], axis=(0, 1)))
-            avg[beta_idx] = avg[beta_idx] + offset # undo offset
 
             # Computing variances
             total_N = beta_space.size * self.n_samples
-            var[beta_idx] = np.exp(sp.special.logsumexp(2 * obs + weight[..., np.newaxis], axis=(0, 1)))
-            var[beta_idx] -= (total_N/(total_N-1)) * avg[beta_idx]**2
-            var[beta_idx] += (1/(total_N-1)) * np.exp(sp.special.logsumexp(2 * obs + 2 * weight[..., np.newaxis], axis=(0, 1)))
+            var[beta_idx] = (total_N/(total_N-1)) * np.exp(sp.special.logsumexp(2 * obs + weight[..., np.newaxis], axis=(0, 1))) - avg[beta_idx]**2
+            # Bias corrected estimate below. Unfortunately, appears to have worse performance than estimator in the line above.
+            # var[beta_idx] = np.exp(sp.special.logsumexp(2 * obs + weight[..., np.newaxis], axis=(0, 1))) - (total_N/(total_N-1)) * avg[beta_idx]**2
+            # var[beta_idx] += (total_N/(total_N-1)) * np.exp(sp.special.logsumexp(2*obs + 2*weight[..., np.newaxis], axis=(0, 1)))
+            
+            avg[beta_idx] += offset # undo offset
         
         print(f'{config_idx} completed')
         return np.stack((avg, var))
@@ -560,15 +556,11 @@ class Sweep():
                   'norm': 'log'}
         self.obs_plot(p_vals, stats, config_idx, free_idx, self.k[free_idx], self.beta, pcolormesh_kwargs=kwargs)
 
-    def learn_dist(self, save_name, model='made', hidden_dims=[100, 100], num_ar_layers=None, alternate=None, num_components=None, bn=True, obs_mask_arg=None, k_mask_arg=None):
-        obs_mask = Sweep.plot_mask
-        k_mask = np.full(len(self.k), True)
-        if obs_mask_arg is not None:
-            obs_mask = obs_mask_arg
-        if k_mask_arg is not None:
-            k_mask = k_mask_arg
-        
-        # First, we format all of our data into the form accepted by the neural network.
+    def export_train_data(self, save_name, obs_mask, k_mask):
+        """
+        Saves observables (energy, magnetization) and conditionals (`self.k`, `beta`)
+        to a format that can be used to train a MAF model.
+        """
         len_k = np.count_nonzero(k_mask)
         len_obs = np.count_nonzero(obs_mask)
         train_data = np.full(self.beta.shape + (self.n_samples, len_k + 1 + len_obs), np.nan)
@@ -576,25 +568,9 @@ class Sweep():
             all_k_vals = np.array([self.k[k_idx][idx] for k_idx, idx in enumerate(config_idx)])
             train_data[config_idx][..., :len_k] = all_k_vals[k_mask]
             train_data[config_idx][..., len_k] = self.beta[config_idx][:, np.newaxis]
-            train_data[config_idx][..., len_k + 1:] = self.get_raw(config_idx)[..., obs_mask]
-        train_data = train_data.reshape(-1, train_data.shape[-1])
+            train_data[config_idx][..., len_k + 1:] = self.get_raw(config_idx, abs_mag=False)[..., obs_mask]
+        np.save(save_name, train_data.reshape(-1, train_data.shape[-1]))
 
-        # FIXME: this just for testing to run faster
-        # train_data = train_data[:10]
-
-        # randomize order of train data so batch normalization works effectively
-        # np.random.shuffle(train_data)
-
-        learn_dist.get_dist(train_data, 
-                            f'{self.base_dir}/{save_name}',
-                            model=model,
-                            data_dim=len_obs,
-                            cond_dim=len_k+1, 
-                            hidden_dims=hidden_dims,
-                            num_ar_layers=num_ar_layers,
-                            alternate=alternate,
-                            num_components=num_components,
-                            bn=bn)
 
 def get_seeds(n):
     """
@@ -645,7 +621,7 @@ if __name__ == '__main__':
     parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit this Python script directly to pick which configuration.')
     parser.add_argument('--calc-comp', help='Perform and save a Kolmogorov–Smirnov test between the sweeps located at the directories specified by --base and --calc_comp.')
     parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test.')
-    parser.add_argument('--learn', action='store_true', help='Test masked autoregressive flow methods.')
+    parser.add_argument('--export-train-data', action='store_true', help='Export data needed to train MAF model.')
     args = parser.parse_args()
 
     requires_load_list = [args.analysis,
@@ -658,7 +634,7 @@ if __name__ == '__main__':
                           args.eng_hist,
                           args.calc_comp,
                           args.plot_comp,
-                          args.learn]
+                          args.export_train_data]
     requires_load = False
     for flag in requires_load_list:
         if flag:
@@ -783,21 +759,9 @@ if __name__ == '__main__':
             other = Sweep.load(args.plot_comp)
             sweep.plot_comp_sweeps(other, (0,)*13, FCC_IDX[-1])
 
-        if args.learn:
+        if args.export_train_data:
             k_mask = np.arange(len(SC_IDX + FCC_IDX + BCC_IDX)) == FCC_IDX[-1]
             obs_mask = np.full(len(Sweep.plot_mask), False)
             obs_mask[2 + FCC_IDX[-1]] = True
             obs_mask[-1] = True
-
-            sweep.learn_dist('dist_080525',
-                             model='maf-mog',
-                             num_ar_layers=2,
-                             num_components=2,
-                             alternate=False,
-                             obs_mask_arg=obs_mask,
-                             k_mask_arg=k_mask)
-
-            # sweep.learn_dist('dist_050725',
-            #                  model='made',
-            #                  obs_mask_arg=obs_mask,
-            #                  k_mask_arg=k_mask)
+            sweep.export_train_data('sweep_150824_signed_mag_train_data', obs_mask, k_mask)

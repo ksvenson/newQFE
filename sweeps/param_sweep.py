@@ -22,7 +22,6 @@ import pickle as pkl
 import multiprocessing as mp
 
 import sys
-sys.path.append('../..')  # TODO Should find more robust way of importing pytorch methods
 
 KFLAGS = 'CDEFGHIJKLMNO'  # arguments for `PROGRAM`
 CORES_PER_NODE = 40  # on the lq1 cluster at the Fermilab Lattice QCD Facility 
@@ -466,6 +465,7 @@ class Sweep():
             if convergence_metric < tol:
                 break
         print(f'{config_idx} Exited iteration loop')
+        np.save(f'{self.base_dir}/{config_idx}_log_Z.npy', log_Z)
 
         # Preparing observables
         obs = raw[..., Sweep.plot_mask]
@@ -696,38 +696,17 @@ if __name__ == '__main__':
 
         if args.edit:
             # Perform any edits you want here
-
-            sweep.multi_hist_step((0,)*len(sweep.k), sweep.beta[..., :10])
+            # sweep.beta = sweep.beta[..., ::2]
+            # sweep.create(f'{sweep.base_dir}_half_beta')
+            print(sweep.beta.shape)
             quit()
-
-            dist = torch.load('./dist_010525.pth', weights_only=False)
-            x = torch.linspace(0, 15, 200)
-            y = torch.linspace(-20, 20, 200)
-
-            dist.eval()
-
-
-            k = list(np.load('./sweep_150824_sw_coarse_k.npz').values())[8]
-            beta = np.load('./sweep_150824_sw_coarse_beta.npy')
-            beta = beta[(0,)*(beta.ndim - 1)]
-
-            display_2d_uncond(dist, data, 'made', 'no_bn_last', x, y, k[-1], beta[-1])
-    
-            # raw = np.full(sweep.beta.shape + (sweep.n_samples, len(Sweep.headers)), np.nan)
-            # for idx in np.ndindex(sweep.beta.shape):
-            #     fnames = sweep.get_data_fnames(idx)
-            #     for seed_idx, fname in enumerate(fnames):
-            #         raw[idx + (slice(seed_idx * sweep.ntraj, (seed_idx + 1) * sweep.ntraj),)] = np.genfromtxt(fname, delimiter=' ')
-            # np.save(f'{sweep.base_dir}_obs.npy', raw)
-            # np.savez(f'{sweep.base_dir}_k.npz', *sweep.k)
-            # np.save(f'{sweep.base_dir}_beta.npy', sweep.beta)
 
         if args.multi_hist_script:
             sweep.write_multi_hist_script()
 
         if args.multi_hist_local or args.multi_hist_cluster:
             # Perform a multiple histogram analysis that samples `res` times as many points in beta.
-            res = 5
+            res = 10
             interp_beta = np.full(sweep.beta.shape[:-1] + (res * sweep.beta.shape[-1],), np.nan)
             for config_idx in np.ndindex(sweep.beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])

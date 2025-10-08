@@ -153,6 +153,7 @@ class Sweep():
         self.params = self.base_dir + '/params.pkl'
         self.multi_hist_batch = self.base_dir + '/multi_hist_batch.sh'
         self.multi_hist_results = self.base_dir + '/multi_hist_results.npz'
+        self.partition_save = self.base_dir + '/partition.npy'
 
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.figs_dir, exist_ok=True)
@@ -408,7 +409,7 @@ class Sweep():
 
         self.create(self.base_dir + '_rb')
 
-    def multi_hist(self, interp_beta, use_mp=False):
+    def multi_hist_beta_only(self, interp_beta, use_mp=False):
         """
         Interpolate/extrapolate observables from `self.beta` to `interp_beta` using the multiple histogram method.
         See Newman and Barkema, Section 8.2.
@@ -434,6 +435,96 @@ class Sweep():
                 var[config_idx] = res[1]
         np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
 
+    def compute_partition(self):
+        """
+        Estimates the partition function at all configurations and temperatures.
+
+        NOTE: In order to conserve memory, this function assumes `self.beta` is identical for every configuration index.
+        """
+        energy = np.full(self.beta.shape + (self.n_samples,), np.nan)
+        for config_idx in np.ndindex(self.beta.shape[:-1]):
+            print(config_idx)
+            raw = self.get_raw(config_idx)
+            k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
+            energy[config_idx] = -1 * self.nx * self.ny * self.nz * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number from `get_raw` is sum(s_i * s_{i+1}) / volume
+
+        log_Z = np.zeros(self.beta.shape)  # initialize Z
+        beta_space = self.beta[(0,)*(len(self.beta.shape)-1)]  # here we make the assumption that `self.beta` is identical for every configuration
+        beta_space = beta_space.reshape((1,)*(len(self.beta.shape)-1) + (self.beta.shape[-1],))
+        beta_diff = np.add.outer(beta_space, -1 * beta_space)  # \beta_k - \beta_j
+        exponent = np.multiply.outer(energy, beta_diff)
+        print(exponent.shape)
+        quit()
+        
+        # Iteration do-while loop.
+        # No loops, factoring
+        print(f'Entering iteration loop')
+        while True:
+            new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape)-1)))  # sum over j
+            print(new_log_Z.shape)
+            quit()
+            new_log_Z = sp.special.logsumexp(new_log_Z, axis=tuple(np.arange(len(energy.shape))))          # sum over i and s
+            new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
+
+            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            log_Z = new_log_Z
+            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
+            if convergence_metric < tol:
+                break
+        print(f'Exited iteration loop')
+        np.save(self.partition_save, log_Z)
+        
+        # Iteration do-while loop.
+        # No loops
+        # print(f'Entering iteration loop')
+        # while True:
+        #     new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape)-1)))  # sum over j
+        #     new_log_Z = sp.special.logsumexp(new_log_Z, axis=tuple(np.arange(len(energy.shape))))          # sum over i and s
+        #     new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
+
+        #     convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+        #     log_Z = new_log_Z
+        #     print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
+        #     if convergence_metric < tol:
+        #         break
+        # print(f'Exited iteration loop')
+        # np.save(self.partition_save, log_Z)
+
+        # Iteration do-while loop.
+        # Manually looping through energy
+        print(f'Entering iteration loop')
+        while True:
+            new_log_Z = np.full(self.beta.shape, np.nan)
+            denominator = np.full(self.beta.shape + energy.shape, np.nan)
+            for eng_idx in np.ndindex(energy.shape):
+                denominator[(slice(None),)*len(self.beta.shape) + eng_idx] = sp.special.logsumexp(beta_diff * energy[eng_idx] - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape))-1))
+            new_log_Z = sp.special.logsumexp(-1 * denominator, axis=tuple(-1*np.arange(1, len(energy.shape)))) - np.log(self.n_samples)
+            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            log_Z = new_log_Z
+            np.save(self.partition_save, log_Z)
+            print(f'Completed iteration with convergence metric {convergence_metric}')
+            if convergence_metric < tol:
+                break
+        print(f'Exited iteration loop')
+        quit()
+            
+
+            # new_log_Z = np.full(self.beta.shape, np.nan)
+            # for beta_k_idx in np.ndindex(self.beta.shape):
+            #     print(beta_k_idx)
+            #     denominator = np.full(energy.shape, np.nan)
+            #     print('entering eng loop')
+            #     for eng_idx in np.ndindex(energy.shape):
+            #         print(eng_idx)
+            #         denominator[eng_idx] = sp.special.logsumexp((self.beta[beta_k_idx] - self.beta) * energy[eng_idx] - log_Z)
+            #     new_log_Z[beta_k_idx] = sp.special.logsumexp(-1 * denominator) - np.log(self.n_samples)
+            # convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            # log_Z = new_log_Z
+            # print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
+            # if convergence_metric < tol:
+            #     break
+
+
     def multi_hist_step(self, config_idx, interp_beta, tol=1e-7):
         """
         Performs a multiple histogram analysis with all observables corresponding to `config_idx`.
@@ -444,9 +535,9 @@ class Sweep():
         print(f'Config Idx: {config_idx}')
         beta_space = self.beta[config_idx]
         k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
-        log_Z = np.zeros(beta_space.shape)  # intialize Z
+        log_Z = np.zeros(beta_space.shape)  # initialize Z
         raw = self.get_raw(config_idx)
-        energy = -1 * self.nx * self.ny * self.nz * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number in file is sum(s_i * s_{i+1}) / volume
+        energy = -1 * self.nx * self.ny * self.nz * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number from `get_raw` is sum(s_i * s_{i+1}) / volume
         
         # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
         beta_diff = np.add.outer(beta_space, -1 * beta_space)  # \beta_k - \beta_j
@@ -696,9 +787,7 @@ if __name__ == '__main__':
 
         if args.edit:
             # Perform any edits you want here
-            # sweep.beta = sweep.beta[..., ::2]
-            # sweep.create(f'{sweep.base_dir}_half_beta')
-            print(sweep.beta.shape)
+            sweep.compute_partition()
             quit()
 
         if args.multi_hist_script:

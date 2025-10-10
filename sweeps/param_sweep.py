@@ -20,6 +20,11 @@ import matplotlib as mpl
 import os
 import pickle as pkl
 import multiprocessing as mp
+import dask.array as da
+from dask.distributed import Client, wait
+from dask import delayed
+
+import time
 
 import sys
 
@@ -144,6 +149,7 @@ class Sweep():
         self.data_dir = self.base_dir + '/data'
         self.figs_dir = self.base_dir + '/figs'
         self.stdout_dir = self.base_dir + '/stdout'
+        self.partition_dir = self.base_dir + '/partition'
         self.stdout_fname = self.stdout_dir + '/slurm_%A.out'
         self.err_fname = self.stdout_dir + '/slurm_%A.err'
         self.mh_stdout_fname = self.stdout_dir + '/slurm_%A_mh.out'
@@ -153,11 +159,11 @@ class Sweep():
         self.params = self.base_dir + '/params.pkl'
         self.multi_hist_batch = self.base_dir + '/multi_hist_batch.sh'
         self.multi_hist_results = self.base_dir + '/multi_hist_results.npz'
-        self.partition_save = self.base_dir + '/partition.npy'
 
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.figs_dir, exist_ok=True)
         os.makedirs(self.stdout_dir, exist_ok=True)
+        os.makedirs(self.partition_dir, exist_ok=True)
         self.write_script()
         self.save()
 
@@ -435,95 +441,49 @@ class Sweep():
                 var[config_idx] = res[1]
         np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
 
-    def compute_partition(self):
+    def compute_partition(self, tol=1e-7):
         """
         Estimates the partition function at all configurations and temperatures.
-
-        NOTE: In order to conserve memory, this function assumes `self.beta` is identical for every configuration index.
         """
-        energy = np.full(self.beta.shape + (self.n_samples,), np.nan)
+        client = Client(n_workers=1, threads_per_worker=1)
+        print(f'Dashboard: {client.dashboard_link}')
+
+        eng_temp_arrs = []
+        beta_k_temp_arrs = []
         for config_idx in np.ndindex(self.beta.shape[:-1]):
-            print(config_idx)
-            raw = self.get_raw(config_idx)
-            k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
-            energy[config_idx] = -1 * self.nx * self.ny * self.nz * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number from `get_raw` is sum(s_i * s_{i+1}) / volume
+            raw = da.from_delayed(delayed(self.get_raw)(config_idx), (self.beta.shape[-1], self.n_samples, len(Sweep.headers)), dtype=np.float64)
+            eng_temp_arrs.append(-1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')])
+            beta_k_temp_arrs.append(self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :])
 
-        log_Z = np.zeros(self.beta.shape)  # initialize Z
-        beta_space = self.beta[(0,)*(len(self.beta.shape)-1)]  # here we make the assumption that `self.beta` is identical for every configuration
-        beta_space = beta_space.reshape((1,)*(len(self.beta.shape)-1) + (self.beta.shape[-1],))
-        beta_diff = np.add.outer(beta_space, -1 * beta_space)  # \beta_k - \beta_j
-        exponent = np.multiply.outer(energy, beta_diff)
-        print(exponent.shape)
-        quit()
+        d_eng = da.concatenate(eng_temp_arrs, axis=0)
+        d_beta_k = da.concatenate(beta_k_temp_arrs, axis=0)
+        d_eng = d_eng.rechunk(d_eng.shape)
+        d_beta_k = d_beta_k.rechunk(d_beta_k.shape)
+
+
+        log_Z = da.zeros(self.beta.size)  # initialize Z
+        exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng)
         
         # Iteration do-while loop.
-        # No loops, factoring
-        print(f'Entering iteration loop')
+        print('Entering iteration loop')
+        count = 0
         while True:
-            new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape)-1)))  # sum over j
-            print(new_log_Z.shape)
-            quit()
-            new_log_Z = sp.special.logsumexp(new_log_Z, axis=tuple(np.arange(len(energy.shape))))          # sum over i and s
-            new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
+            count += 1
+            start_time = time.time()
+            new_log_Z = (exponent - log_Z[:, np.newaxis, np.newaxis]).map_blocks(sp.special.logsumexp, axis=0, drop_axis=0)
+            new_log_Z = (exponent - new_log_Z[np.newaxis, :, :]).map_blocks(sp.special.logsumexp, axis=(1, 2), drop_axis=(1,2))
+            new_log_Z = (new_log_Z - np.log(self.n_samples)).persist()
+            wait(new_log_Z)
 
-            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            convergence_metric = da.linalg.norm((new_log_Z - log_Z)/new_log_Z).compute()
             log_Z = new_log_Z
-            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
+            log_Z.to_zarr(os.join(self.partition_dir, f'iter_{count}.zarr'))
+            print(f'Completed iteration {count} in {time.time()-start_time:.2f} with convergence metric {convergence_metric:.2f}')
             if convergence_metric < tol:
                 break
-        print(f'Exited iteration loop')
-        np.save(self.partition_save, log_Z)
-        
-        # Iteration do-while loop.
-        # No loops
-        # print(f'Entering iteration loop')
-        # while True:
-        #     new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape)-1)))  # sum over j
-        #     new_log_Z = sp.special.logsumexp(new_log_Z, axis=tuple(np.arange(len(energy.shape))))          # sum over i and s
-        #     new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
-
-        #     convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
-        #     log_Z = new_log_Z
-        #     print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
-        #     if convergence_metric < tol:
-        #         break
-        # print(f'Exited iteration loop')
-        # np.save(self.partition_save, log_Z)
-
-        # Iteration do-while loop.
-        # Manually looping through energy
-        print(f'Entering iteration loop')
-        while True:
-            new_log_Z = np.full(self.beta.shape, np.nan)
-            denominator = np.full(self.beta.shape + energy.shape, np.nan)
-            for eng_idx in np.ndindex(energy.shape):
-                denominator[(slice(None),)*len(self.beta.shape) + eng_idx] = sp.special.logsumexp(beta_diff * energy[eng_idx] - log_Z, axis=tuple(-1*np.arange(len(self.beta.shape))-1))
-            new_log_Z = sp.special.logsumexp(-1 * denominator, axis=tuple(-1*np.arange(1, len(energy.shape)))) - np.log(self.n_samples)
-            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
-            log_Z = new_log_Z
-            np.save(self.partition_save, log_Z)
-            print(f'Completed iteration with convergence metric {convergence_metric}')
-            if convergence_metric < tol:
-                break
-        print(f'Exited iteration loop')
-        quit()
-            
-
-            # new_log_Z = np.full(self.beta.shape, np.nan)
-            # for beta_k_idx in np.ndindex(self.beta.shape):
-            #     print(beta_k_idx)
-            #     denominator = np.full(energy.shape, np.nan)
-            #     print('entering eng loop')
-            #     for eng_idx in np.ndindex(energy.shape):
-            #         print(eng_idx)
-            #         denominator[eng_idx] = sp.special.logsumexp((self.beta[beta_k_idx] - self.beta) * energy[eng_idx] - log_Z)
-            #     new_log_Z[beta_k_idx] = sp.special.logsumexp(-1 * denominator) - np.log(self.n_samples)
-            # convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
-            # log_Z = new_log_Z
-            # print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
-            # if convergence_metric < tol:
-            #     break
-
+        print('Exited iteration loop')
+        np.save(os.join(self.partition_dir, f'final_tol_{int(np.log10(tol))}.npy'), log_Z.compute())
+        print('Final array saved.')
 
     def multi_hist_step(self, config_idx, interp_beta, tol=1e-7):
         """
@@ -706,6 +666,7 @@ if __name__ == '__main__':
     parser.add_argument('--refine-beta', action='store_true', help='Create new sweep which only samples around criticality.')
     parser.add_argument('--edit', action='store_true', help='No specific purpose. Edit this Python script to perform any edits you need.')
     parser.add_argument('--multi-hist-script', action='store_true', help='Writes a batch script for a multiple histogram analysis to be sent to the lq1 cluster.')
+    parser.add_argument('--partition', action='store_true', help='Computes the parition function and saves the results to disk.')
     parser.add_argument('--multi-hist-local', action='store_true', help='Performs a multiple histogram analysis on existing data. Does not use multiprocessing.')
     parser.add_argument('--multi-hist-cluster', action='store_true', help='Performs a multiple histogram analysis on existing data. Uses multiprocessing. Intended to only be used on the lq1 cluster.')
     parser.add_argument('--multi-hist-plot', action='store_true', help='Plot the results of a multiple histogram analysis.')
@@ -719,6 +680,7 @@ if __name__ == '__main__':
                           args.refine_nwolff,
                           args.refine_beta,
                           args.edit,
+                          args.partition,
                           args.multi_hist_local,
                           args.multi_hist_cluster,
                           args.multi_hist_plot,
@@ -792,6 +754,9 @@ if __name__ == '__main__':
 
         if args.multi_hist_script:
             sweep.write_multi_hist_script()
+
+        if args.partition:
+            sweep.compute_partition()
 
         if args.multi_hist_local or args.multi_hist_cluster:
             # Perform a multiple histogram analysis that samples `res` times as many points in beta.

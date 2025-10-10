@@ -445,7 +445,7 @@ class Sweep():
         """
         Estimates the partition function at all configurations and temperatures.
         """
-        client = Client(n_workers=1, threads_per_worker=1)
+        client = Client(n_workers=1, threads_per_worker=4)
         print(f'Dashboard: {client.dashboard_link}')
 
         eng_temp_arrs = []
@@ -457,8 +457,10 @@ class Sweep():
 
         d_eng = da.concatenate(eng_temp_arrs, axis=0)
         d_beta_k = da.concatenate(beta_k_temp_arrs, axis=0)
-        d_eng = d_eng.rechunk(d_eng.shape)
-        d_beta_k = d_beta_k.rechunk(d_beta_k.shape)
+        # d_eng = d_eng.rechunk(d_eng.shape)
+        # d_beta_k = d_beta_k.rechunk(d_beta_k.shape)
+        d_eng = d_eng.rechunk((100,) + d_eng.shape[1:])
+        d_beta_k = d_beta_k.rechunk((100,) + d_beta_k.shape[1:])
 
 
         log_Z = da.zeros(self.beta.size)  # initialize Z
@@ -477,8 +479,8 @@ class Sweep():
 
             convergence_metric = da.linalg.norm((new_log_Z - log_Z)/new_log_Z).compute()
             log_Z = new_log_Z
-            log_Z.to_zarr(os.join(self.partition_dir, f'iter_{count}.zarr'))
-            print(f'Completed iteration {count} in {time.time()-start_time:.2f} with convergence metric {convergence_metric:.2f}')
+            log_Z.to_zarr(os.path.join(self.partition_dir, f'iter_{count}.zarr'), overwrite=True)
+            print(f'Completed iteration {count} in {int(time.time()-start_time)} s with convergence metric {convergence_metric:.2f}')
             if convergence_metric < tol:
                 break
         print('Exited iteration loop')

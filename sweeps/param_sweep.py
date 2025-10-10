@@ -445,13 +445,14 @@ class Sweep():
         """
         Estimates the partition function at all configurations and temperatures.
         """
-        client = Client(n_workers=1, threads_per_worker=4)
+        client = Client(n_workers=1, threads_per_worker=2)
         print(f'Dashboard: {client.dashboard_link}')
 
         eng_temp_arrs = []
         beta_k_temp_arrs = []
         for config_idx in np.ndindex(self.beta.shape[:-1]):
-            raw = da.from_delayed(delayed(self.get_raw)(config_idx), (self.beta.shape[-1], self.n_samples, len(Sweep.headers)), dtype=np.float64)
+            # raw = da.from_delayed(delayed(self.get_raw)(config_idx), (self.beta.shape[-1], self.n_samples, len(Sweep.headers)), dtype=np.float64)
+            raw = da.from_array(self.get_raw(config_idx))
             eng_temp_arrs.append(-1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')])
             beta_k_temp_arrs.append(self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :])
 
@@ -464,7 +465,8 @@ class Sweep():
 
 
         log_Z = da.zeros(self.beta.size)  # initialize Z
-        exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng)
+        exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng).persist()
+        wait(exponent)
         
         # Iteration do-while loop.
         print('Entering iteration loop')

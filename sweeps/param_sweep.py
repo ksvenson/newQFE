@@ -23,6 +23,7 @@ import multiprocessing as mp
 import dask.array as da
 from dask.distributed import Client, wait
 from dask import delayed
+import gc
 
 import time
 
@@ -372,8 +373,8 @@ class Sweep():
                 multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
                 avg_stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
                 var_stats.append(Stat(multi_hist_label + '_var', multi_hist_axis + ' Variance', plot=raw_stat.plot))
-        self.obs_plot(avg, avg_stats, config_idx, free_idx, self.k[free_idx], interp_beta)
-        self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], interp_beta)
+        self.obs_plot(avg, avg_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
+        self.obs_plot(var, var_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
 
     def refine_nwolff(self):
         """
@@ -415,32 +416,6 @@ class Sweep():
 
         self.create(self.base_dir + '_rb')
 
-    def multi_hist_beta_only(self, interp_beta, use_mp=False):
-        """
-        Interpolate/extrapolate observables from `self.beta` to `interp_beta` using the multiple histogram method.
-        See Newman and Barkema, Section 8.2.
-        
-        Saves the results in `self.multi_hist_results`.
-        
-        WARNING: This method will use all available cores on a machine if `use_mp` is True.
-                 Multiprocessing functionality is intended for the lq1 cluster.
-        """
-        output_shape = interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),)
-        if use_mp:
-            pool = mp.Pool()
-            args = [(idx, interp_beta) for idx in np.ndindex(self.beta.shape[:-1])]
-            res = np.array(pool.starmap(self.multi_hist_step, args))
-            avg = res[:, 0].reshape(output_shape)
-            var = res[:, 1].reshape(output_shape)
-        else:
-            avg = np.full(output_shape, np.nan)
-            var = np.full(output_shape, np.nan)
-            for config_idx in np.ndindex(self.beta.shape[:-1]):
-                res = self.multi_hist_step(config_idx, interp_beta)
-                avg[config_idx] = res[0]
-                var[config_idx] = res[1]
-        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var)
-
     def compute_partition(self, tol=1e-7):
         """
         Estimates the partition function at all configurations and temperatures.
@@ -451,23 +426,20 @@ class Sweep():
         eng_temp_arrs = []
         beta_k_temp_arrs = []
         for config_idx in np.ndindex(self.beta.shape[:-1]):
-            # raw = da.from_delayed(delayed(self.get_raw)(config_idx), (self.beta.shape[-1], self.n_samples, len(Sweep.headers)), dtype=np.float64)
             raw = da.from_array(self.get_raw(config_idx))
             eng_temp_arrs.append(-1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')])
             beta_k_temp_arrs.append(self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :])
 
         d_eng = da.concatenate(eng_temp_arrs, axis=0)
         d_beta_k = da.concatenate(beta_k_temp_arrs, axis=0)
-        # d_eng = d_eng.rechunk(d_eng.shape)
-        # d_beta_k = d_beta_k.rechunk(d_beta_k.shape)
-        d_eng = d_eng.rechunk((100,) + d_eng.shape[1:])
-        d_beta_k = d_beta_k.rechunk((100,) + d_beta_k.shape[1:])
 
-
-        log_Z = da.zeros(self.beta.size)  # initialize Z
         exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng).persist()
         wait(exponent)
+        del d_eng
+        del d_beta_k
+        gc.collect()
         
+        log_Z = np.zeros(self.beta.size)  # initialize Z
         # Iteration do-while loop.
         print('Entering iteration loop')
         count = 0
@@ -476,18 +448,68 @@ class Sweep():
             start_time = time.time()
             new_log_Z = (exponent - log_Z[:, np.newaxis, np.newaxis]).map_blocks(sp.special.logsumexp, axis=0, drop_axis=0)
             new_log_Z = (exponent - new_log_Z[np.newaxis, :, :]).map_blocks(sp.special.logsumexp, axis=(1, 2), drop_axis=(1,2))
-            new_log_Z = (new_log_Z - np.log(self.n_samples)).persist()
-            wait(new_log_Z)
+            new_log_Z = (new_log_Z - np.log(self.n_samples)).compute()
 
-            convergence_metric = da.linalg.norm((new_log_Z - log_Z)/new_log_Z).compute()
+            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
+            del log_Z
+            gc.collect()
             log_Z = new_log_Z
-            log_Z.to_zarr(os.path.join(self.partition_dir, f'iter_{count}.zarr'), overwrite=True)
-            print(f'Completed iteration {count} in {int(time.time()-start_time)} s with convergence metric {convergence_metric:.2f}')
+            np.save(os.path.join(self.partition_dir, f'iter_{count}_conv_{np.log10(convergence_metric):.2f}.zarr'), log_Z)
+            print(f'Completed iteration {count} in {int(time.time()-start_time)} s with convergence metric {convergence_metric}')
             if convergence_metric < tol:
                 break
         print('Exited iteration loop')
-        np.save(os.join(self.partition_dir, f'final_tol_{int(np.log10(tol))}.npy'), log_Z.compute())
+        np.save(os.path.join(self.partition_dir, f'final_log_Z.npy'), log_Z)
         print('Final array saved.')
+
+    def multi_hist_interp(self, interp_k, interp_beta):
+        """
+        Performs the multiple histogram interpolation/extrapolation. Assumes `compute_partition` has already ran and converged for this sweep.
+        """
+        eng = np.full(self.beta.shape + (self.n_samples, len(Sweep.get_idxes('energy'))), np.nan)
+        beta_k = np.full(self.beta.shape + (len(SC_IDX + FCC_IDX + BCC_IDX),), np.nan)
+        obs = np.full(eng.shape[:-1] + (np.count_nonzero(Sweep.plot_mask),), np.nan)
+        for config_idx in np.ndindex(self.beta.shape[:-1]):
+            print(config_idx)
+            raw = da.from_array(self.get_raw(config_idx))
+            eng[config_idx] = -1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')]
+            beta_k[config_idx] = self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :]
+            obs[config_idx] = raw[..., Sweep.plot_mask]
+
+        eng = eng.reshape(-1, eng.shape[-2], eng.shape[-1])
+        beta_k = beta_k.reshape(-1, beta_k.shape[-1])
+        obs = obs.reshape(-1, obs.shape[-2], obs.shape[-1])
+        obs_offset = np.min(obs, axis=(0, 1)) - 1
+        obs = np.log(obs - obs_offset)
+
+        client = Client(n_workers=1, threads_per_worker=2)
+        print(f'Dashboard: {client.dashboard_link}')
+        d_eng = da.array(eng)
+        d_beta_k = da.array(beta_k)
+
+        exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng)
+        log_Z = da.array(np.load(os.path.join(self.partition_dir, 'final_log_Z.npy')))
+        denominator = (exponent - log_Z[:, np.newaxis, np.newaxis]).map_blocks(sp.special.logsumexp, axis=0, drop_axis=0) + np.log(self.n_samples)
+        denominator = denominator.compute()
+        
+        avg = np.full(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),), np.nan)
+        var = np.full(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),), np.nan)
+        for interp_config_idx in np.ndindex(interp_beta.shape):
+            print(interp_config_idx)
+            interp_beta_k = interp_beta[interp_config_idx] * np.array([interp_k[dir][idx] for dir, idx in enumerate(interp_config_idx[:-1])])
+            interp_exponent = np.einsum('i,kli->kl', -1 * interp_beta_k, eng)
+
+            interp_log_Z = sp.special.logsumexp(interp_exponent - denominator)
+            weight = interp_exponent - (denominator + interp_log_Z)
+            avg[interp_config_idx] = sp.special.logsumexp(weight[..., np.newaxis] + obs, axis=(0,1))
+            var[interp_config_idx] = sp.special.logsumexp(weight[..., np.newaxis] + 2*obs, axis=(0,1))
+        avg = np.exp(avg)
+        var = np.exp(var) - avg**2
+        avg += obs_offset
+        save_k = {}
+        for i in range(len(interp_k)):
+            save_k[f'k{i}'] = interp_k[i]
+        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var, **save_k)
 
     def multi_hist_step(self, config_idx, interp_beta, tol=1e-7):
         """
@@ -671,6 +693,7 @@ if __name__ == '__main__':
     parser.add_argument('--edit', action='store_true', help='No specific purpose. Edit this Python script to perform any edits you need.')
     parser.add_argument('--multi-hist-script', action='store_true', help='Writes a batch script for a multiple histogram analysis to be sent to the lq1 cluster.')
     parser.add_argument('--partition', action='store_true', help='Computes the parition function and saves the results to disk.')
+    parser.add_argument('--multi_hist_interp', action='store_true', help='Performs multiple histogram interpolation/extrapolation.')
     parser.add_argument('--multi-hist-local', action='store_true', help='Performs a multiple histogram analysis on existing data. Does not use multiprocessing.')
     parser.add_argument('--multi-hist-cluster', action='store_true', help='Performs a multiple histogram analysis on existing data. Uses multiprocessing. Intended to only be used on the lq1 cluster.')
     parser.add_argument('--multi-hist-plot', action='store_true', help='Plot the results of a multiple histogram analysis.')
@@ -685,6 +708,7 @@ if __name__ == '__main__':
                           args.refine_beta,
                           args.edit,
                           args.partition,
+                          args.multi_hist_interp,
                           args.multi_hist_local,
                           args.multi_hist_cluster,
                           args.multi_hist_plot,
@@ -762,9 +786,27 @@ if __name__ == '__main__':
         if args.partition:
             sweep.compute_partition()
 
+        if args.multi_hist_interp:
+            res = 5
+
+            k_int = sweep.k[FCC_IDX[-1]]
+            sc_k = [[0]] * len(SC_IDX)
+            fcc_k = [[1]] * (len(FCC_IDX) - 1)
+            fcc_k.append(np.linspace(np.min(k_int), np.max(k_int), num=res*len(k_int)).round(2))
+            bcc_k = [[0]] * len(BCC_IDX)
+            interp_k = sc_k + fcc_k + bcc_k
+            interp_k = [np.array(arr) for arr in interp_k]
+
+            beta_space = sweep.beta.reshape(-1, sweep.beta.shape[-1])[0]
+            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (res * beta_space.size,), np.nan)
+            for config_idx in np.ndindex(interp_beta.shape[:-1]):
+                interp_beta[config_idx] = np.linspace(np.min(beta_space), np.max(beta_space), num=res*beta_space.size)
+            
+            sweep.multi_hist_interp(interp_k, interp_beta)
+
         if args.multi_hist_local or args.multi_hist_cluster:
             # Perform a multiple histogram analysis that samples `res` times as many points in beta.
-            res = 10
+            res = 5
             interp_beta = np.full(sweep.beta.shape[:-1] + (res * sweep.beta.shape[-1],), np.nan)
             for config_idx in np.ndindex(sweep.beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])

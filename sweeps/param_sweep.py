@@ -357,25 +357,6 @@ class Sweep():
             var_stats.append(Stat(var_label, var_axis, plot=avg_stat.plot))
         self.obs_plot(var, var_stats, config_idx, free_idx, self.k[free_idx], self.beta)
 
-    def multi_hist_obs_plot(self, config_idx, free_idx):
-        """
-        Plots averages and variances of all observables saved in `self.multi_hist_results`. See `obs_plot` for details.
-        """
-        res = np.load(self.multi_hist_results)
-        interp_beta = res['interp_beta']
-        avg = res['avg']
-        var = res['var']
-        avg_stats = []
-        var_stats = []
-        for raw_stat in Sweep.headers:
-            if raw_stat.plot:
-                multi_hist_label = 'multi_hist_' + raw_stat.label
-                multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
-                avg_stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
-                var_stats.append(Stat(multi_hist_label + '_var', multi_hist_axis + ' Variance', plot=raw_stat.plot))
-        self.obs_plot(avg, avg_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
-        self.obs_plot(var, var_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
-
     def refine_nwolff(self):
         """
         Creates a new `Sweep` object and directory with an improved set of `nwolff` parameters.
@@ -511,70 +492,50 @@ class Sweep():
             save_k[f'k{i}'] = interp_k[i]
         np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var, **save_k)
 
-    def multi_hist_step(self, config_idx, interp_beta, tol=1e-7):
+    def multi_hist_obs_plot(self, config_idx, free_idx):
         """
-        Performs a multiple histogram analysis with all observables corresponding to `config_idx`.
-        See Newman and Barkema, Section 8.2.
-
-        This method is resource intensive. It is intended to be called by `multi_hist`, and executed in parallel on the lq1 cluster.
+        Plots averages and variances of all observables saved in `self.multi_hist_results`. See `obs_plot` for details.
         """
-        print(f'Config Idx: {config_idx}')
-        beta_space = self.beta[config_idx]
-        k_vals = np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])
-        log_Z = np.zeros(beta_space.shape)  # initialize Z
-        raw = self.get_raw(config_idx)
-        energy = -1 * self.nx * self.ny * self.nz * np.sum(k_vals * raw[..., Sweep.get_idxes('energy')], axis=-1)  # number from `get_raw` is sum(s_i * s_{i+1}) / volume
-        
-        # Implementation follows Newman and Barkema. Section 8.2.1, Equation 8.36.
-        beta_diff = np.add.outer(beta_space, -1 * beta_space)  # \beta_k - \beta_j
-        exponent = np.multiply.outer(energy, beta_diff)        # E_{is} * (\beta_k - \beta_j)
-        
-        # Iteration do-while loop.
-        print(f'{config_idx} Entering iteration loop')
-        while True:
-            new_log_Z = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1)  # sum over j
-            new_log_Z = sp.special.logsumexp(new_log_Z, axis=(0, 1))          # sum over i and s
-            new_log_Z -= np.log(self.n_samples)                               # divide by n_j (which in constant in our case)
+        res = np.load(self.multi_hist_results)
+        interp_beta = res['interp_beta']
+        avg = res['avg']
+        var = res['var']
+        avg_stats = []
+        var_stats = []
+        for raw_stat in Sweep.headers:
+            if raw_stat.plot:
+                multi_hist_label = 'multi_hist_' + raw_stat.label
+                multi_hist_axis = 'Multi-Histogram ' + raw_stat.axis
+                avg_stats.append(Stat(multi_hist_label, multi_hist_axis, plot=raw_stat.plot))
+                var_stats.append(Stat(multi_hist_label + '_var', multi_hist_axis + ' Variance', plot=raw_stat.plot))
+        self.obs_plot(avg, avg_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
+        self.obs_plot(var, var_stats, config_idx, free_idx, res[f'k{free_idx}'], interp_beta)
 
-            convergence_metric = np.linalg.norm((new_log_Z - log_Z)/new_log_Z)
-            log_Z = new_log_Z
-            print(f'{config_idx} Completed iteration with convergence metric {convergence_metric}')
-            if convergence_metric < tol:
-                break
-        print(f'{config_idx} Exited iteration loop')
-        np.save(f'{self.base_dir}/{config_idx}_log_Z.npy', log_Z)
+    def plot_beta_crit(self, config_idx, free_idx):
+        plot_idx = list(config_idx)
+        plot_idx[free_idx] = slice(None)
+        plot_idx = tuple(plot_idx)
 
-        # Preparing observables
-        obs = raw[..., Sweep.plot_mask]
-        offset = obs.min(axis=(0, 1)) - 1  # Find minimum across beta and samples
-        obs -= offset                      # Ensure we only work with positive numbers
-        obs = np.log(obs)                  # We calculate the log of the expectation value
-        
-        # We need to manually loop through `interp_beta` to avoid running out of memory.
-        avg = np.full((interp_beta.shape[-1], np.count_nonzero(Sweep.plot_mask)), np.nan)
-        var = np.full(avg.shape, np.nan)
-        for beta_idx, beta in enumerate(interp_beta[config_idx]):
-            exponent = np.multiply.outer(energy, beta - beta_space)                                      # E_{is} * (\beta - \beta_j)
-            denominator = -1 * sp.special.logsumexp(exponent - log_Z, axis=-1) - np.log(self.n_samples)  # sum over j
-            interp_log_Z = sp.special.logsumexp(denominator, axis=(0, 1))                                # sum over i and s
+        res = np.load(self.multi_hist_results)
+        interp_beta = res['interp_beta'][plot_idx]
+        interp_k = res[f'k{free_idx}']
+        var = res['var'][plot_idx]
+        var = var[:, :, FCC_IDX + (-1,)]
 
-            # Computing total weight
-            weight = denominator - interp_log_Z
-            
-            # Computing averages
-            avg[beta_idx] = np.exp(sp.special.logsumexp(obs + weight[..., np.newaxis], axis=(0, 1)))
+        beta_c = interp_beta[np.arange(interp_beta.shape[0])[:, np.newaxis], np.argmax(var, axis=1)]
+        step = interp_beta[0, 1] - interp_beta[0, 0]
 
-            # Computing variances
-            total_N = beta_space.size * self.n_samples
-            var[beta_idx] = (total_N/(total_N-1)) * np.exp(sp.special.logsumexp(2 * obs + weight[..., np.newaxis], axis=(0, 1))) - avg[beta_idx]**2
-            # Bias corrected estimate below. Unfortunately, appears to have worse performance than estimator in the line above.
-            # var[beta_idx] = np.exp(sp.special.logsumexp(2 * obs + weight[..., np.newaxis], axis=(0, 1))) - (total_N/(total_N-1)) * avg[beta_idx]**2
-            # var[beta_idx] += (total_N/(total_N-1)) * np.exp(sp.special.logsumexp(2*obs + 2*weight[..., np.newaxis], axis=(0, 1)))
-            
-            avg[beta_idx] += offset # undo offset
-        
-        print(f'{config_idx} completed')
-        return np.stack((avg, var))
+        fig, ax = plt.subplots()
+        for dir in range(beta_c.shape[-1] - 1):
+            ax.plot(beta_c[:, dir], interp_k, label=f'Direction {dir+1}')
+            ax.fill_betweenx(interp_k, beta_c[:, dir] - step, beta_c[:, dir] + step, alpha=0.2)
+        ax.plot(beta_c[:, -1], interp_k, label='Magnetization')
+        ax.fill_betweenx(interp_k, beta_c[:, -1] - step, beta_c[:, -1] + step, alpha=0.2)
+
+        ax.set(xlabel=r'$\beta$', ylabel=rf'$K_{free_idx-2}$', title=r'$\beta_c$ Estimated with Maximum Variance')
+        ax.legend()
+        fig.savefig(f'{self.figs_dir}/beta_c.svg', **FIG_SAVE_OPTIONS)
+        plt.close()
 
     def eng_hist(self, config_idx, title):
         """
@@ -693,10 +654,9 @@ if __name__ == '__main__':
     parser.add_argument('--edit', action='store_true', help='No specific purpose. Edit this Python script to perform any edits you need.')
     parser.add_argument('--multi-hist-script', action='store_true', help='Writes a batch script for a multiple histogram analysis to be sent to the lq1 cluster.')
     parser.add_argument('--partition', action='store_true', help='Computes the parition function and saves the results to disk.')
-    parser.add_argument('--multi_hist_interp', action='store_true', help='Performs multiple histogram interpolation/extrapolation.')
-    parser.add_argument('--multi-hist-local', action='store_true', help='Performs a multiple histogram analysis on existing data. Does not use multiprocessing.')
-    parser.add_argument('--multi-hist-cluster', action='store_true', help='Performs a multiple histogram analysis on existing data. Uses multiprocessing. Intended to only be used on the lq1 cluster.')
+    parser.add_argument('--multi-hist-interp', action='store_true', help='Performs multiple histogram interpolation/extrapolation.')
     parser.add_argument('--multi-hist-plot', action='store_true', help='Plot the results of a multiple histogram analysis.')
+    parser.add_argument('--plot-beta-c', action='store_true', help='Plot the estimate of beta_critical using the multiple histogram interpolation results.')
     parser.add_argument('--eng-hist', action='store_true', help='Create an histogram of energies for a specific configuration. Edit this Python script directly to pick which configuration.')
     parser.add_argument('--calc-comp', help='Perform and save a Kolmogorov–Smirnov test between the sweeps located at the directories specified by --base and --calc_comp.')
     parser.add_argument('--plot-comp', help='Plot the results of the saved Kolmogorov–Smirnov test.')
@@ -709,9 +669,8 @@ if __name__ == '__main__':
                           args.edit,
                           args.partition,
                           args.multi_hist_interp,
-                          args.multi_hist_local,
-                          args.multi_hist_cluster,
                           args.multi_hist_plot,
+                          args.plot_beta_c,
                           args.eng_hist,
                           args.calc_comp,
                           args.plot_comp,
@@ -804,19 +763,11 @@ if __name__ == '__main__':
             
             sweep.multi_hist_interp(interp_k, interp_beta)
 
-        if args.multi_hist_local or args.multi_hist_cluster:
-            # Perform a multiple histogram analysis that samples `res` times as many points in beta.
-            res = 5
-            interp_beta = np.full(sweep.beta.shape[:-1] + (res * sweep.beta.shape[-1],), np.nan)
-            for config_idx in np.ndindex(sweep.beta.shape[:-1]):
-                interp_beta[config_idx] = np.linspace(sweep.beta[config_idx][0], sweep.beta[config_idx][-1], num=interp_beta.shape[-1])
-            if args.multi_hist_local:
-                sweep.multi_hist(interp_beta, use_mp=False)
-            if args.multi_hist_cluster:
-                sweep.multi_hist(interp_beta, use_mp=True)
-        
         if args.multi_hist_plot:
             sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])
+
+        if args.plot_beta_c:
+            sweep.plot_beta_crit((0,)*13, FCC_IDX[-1])
         
         if args.eng_hist:
             # Can pick any config_idx you want.

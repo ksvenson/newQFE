@@ -747,19 +747,24 @@ if __name__ == '__main__':
 
         if args.multi_hist_interp:
             res = 5
+            extra_mult = 0.5
 
             k_int = sweep.k[FCC_IDX[-1]]
             sc_k = [[0]] * len(SC_IDX)
             fcc_k = [[1]] * (len(FCC_IDX) - 1)
-            fcc_k.append(np.linspace(np.min(k_int), np.max(k_int), num=res*len(k_int)).round(2))
+
+            k_range = np.max(k_int) - np.min(k_int)
+            fcc_k.append(np.linspace(np.min(k_int) - extra_mult*k_range, np.max(k_int) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_int))).round(2))
             bcc_k = [[0]] * len(BCC_IDX)
             interp_k = sc_k + fcc_k + bcc_k
             interp_k = [np.array(arr) for arr in interp_k]
 
-            beta_space = sweep.beta.reshape(-1, sweep.beta.shape[-1])[0]
-            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (res * beta_space.size,), np.nan)
+            beta_space = sweep.beta.reshape(-1, sweep.beta.shape[-1])[0]  # assumes all configs. have the same beta range
+            beta_range = np.max(beta_space) - np.min(beta_space)
+            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (int((1+2*extra_mult) * res * beta_space.size),), np.nan)
+
             for config_idx in np.ndindex(interp_beta.shape[:-1]):
-                interp_beta[config_idx] = np.linspace(np.min(beta_space), np.max(beta_space), num=res*beta_space.size)
+                interp_beta[config_idx] = np.linspace(np.min(beta_space) - extra_mult*beta_range, np.max(beta_space) + extra_mult*beta_range, num=interp_beta.shape[-1])
             
             sweep.multi_hist_interp(interp_k, interp_beta)
 
@@ -790,8 +795,12 @@ if __name__ == '__main__':
             sweep.plot_comp_sweeps(other, (0,)*13, FCC_IDX[-1])
 
         if args.export_train_data:
-            k_mask = np.arange(len(SC_IDX + FCC_IDX + BCC_IDX)) == FCC_IDX[-1]
-            obs_mask = np.full(len(Sweep.plot_mask), False)
-            obs_mask[2 + FCC_IDX[-1]] = True
+            # k_mask = np.arange(len(SC_IDX + FCC_IDX + BCC_IDX)) == FCC_IDX[-1]
+            # obs_mask = np.full(len(Sweep.plot_mask), False)
+            # obs_mask[2 + FCC_IDX[-1]] = True
+            # obs_mask[-1] = True
+
+            k_mask = np.array([idx in FCC_IDX for idx in np.arange(len(sweep.k))])
+            obs_mask = np.array([idx-2 in FCC_IDX for idx in np.arange(len(Sweep.headers))])
             obs_mask[-1] = True
-            sweep.export_train_data('sweep_150824_signed_mag_train_data', obs_mask, k_mask)
+            sweep.export_train_data('sweep_150824_fcc_k_signed_mag_train_data', obs_mask, k_mask)

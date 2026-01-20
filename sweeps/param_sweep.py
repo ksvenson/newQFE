@@ -492,11 +492,15 @@ class Sweep():
             save_k[f'k{i}'] = interp_k[i]
         np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var, **save_k)
 
-    def multi_hist_obs_plot(self, config_idx, free_idx):
+    def multi_hist_obs_plot(self, config_idx, free_idx, save=None):
         """
         Plots averages and variances of all observables saved in `self.multi_hist_results`. See `obs_plot` for details.
         """
-        res = np.load(self.multi_hist_results)
+        res = None
+        if save is None:
+            res = np.load(self.multi_hist_results)
+        else:
+            res = np.load(save)
         interp_beta = res['interp_beta']
         avg = res['avg']
         var = res['var']
@@ -736,7 +740,8 @@ if __name__ == '__main__':
 
         if args.edit:
             # Perform any edits you want here
-            sweep.compute_partition()
+            # sweep.compute_partition()
+            print(sweep.k[FCC_IDX[-1]])
             quit()
 
         if args.multi_hist_script:
@@ -747,14 +752,16 @@ if __name__ == '__main__':
 
         if args.multi_hist_interp:
             res = 5
-            extra_mult = 0.5
+            extra_mult = 0
 
-            k_int = sweep.k[FCC_IDX[-1]]
+            k_init = sweep.k[FCC_IDX[-1]]
             sc_k = [[0]] * len(SC_IDX)
-            fcc_k = [[1]] * (len(FCC_IDX) - 1)
+            fcc_k = [[1]] * (len(FCC_IDX) - 2)
 
-            k_range = np.max(k_int) - np.min(k_int)
-            fcc_k.append(np.linspace(np.min(k_int) - extra_mult*k_range, np.max(k_int) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_int))).round(2))
+            k_range = np.max(k_init) - np.min(k_init)
+            fcc_k.append(np.linspace(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_init))).round(2))
+            fcc_k.append([1])
+
             bcc_k = [[0]] * len(BCC_IDX)
             interp_k = sc_k + fcc_k + bcc_k
             interp_k = [np.array(arr) for arr in interp_k]
@@ -769,7 +776,7 @@ if __name__ == '__main__':
             sweep.multi_hist_interp(interp_k, interp_beta)
 
         if args.multi_hist_plot:
-            sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-1])
+            sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-2], save=f'./{sweep.base_dir}/multi_hist_results_K5.npz')
 
         if args.plot_beta_c:
             sweep.plot_beta_crit((0,)*13, FCC_IDX[-1])

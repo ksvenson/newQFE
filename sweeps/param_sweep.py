@@ -280,7 +280,7 @@ class Sweep():
         for config_idx in np.ndindex(self.beta.shape[:-1]):
             raw = self.get_raw(config_idx)
             avg[config_idx] = raw.mean(axis=-2)
-            var[config_idx] = raw.var(axis=-2)
+            var[config_idx] = raw.var(axis=-2, ddof=1)
         return avg, var
     
     @staticmethod
@@ -525,7 +525,7 @@ class Sweep():
             res = np.load(save)
         interp_beta = res['interp_beta']
         avg = res['avg']
-        var = res['var']
+        var = res['reweighted_var']
         avg_stats = []
         var_stats = []
         for raw_stat in Sweep.headers:
@@ -774,15 +774,17 @@ if __name__ == '__main__':
 
         if args.multi_hist_interp:
             res = 5
-            extra_mult = 0
+            extra_mult = 0.5
 
             k_init = sweep.k[FCC_IDX[-1]]
             sc_k = [[0]] * len(SC_IDX)
-            fcc_k = [[1]] * (len(FCC_IDX) - 2)
+            fcc_k = [[1]] * (len(FCC_IDX) - 1)
 
             k_range = np.max(k_init) - np.min(k_init)
-            fcc_k.append(np.linspace(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_init))-(res-1)))
-            fcc_k.append([1])
+            k_step = k_init[1] - k_init[0]
+            # fcc_k.append(np.linspace(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_init))-(res-1)))
+            fcc_k.append(np.arange(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range + k_step/res, k_step/res))
+            # fcc_k.append([1])
 
             bcc_k = [[0]] * len(BCC_IDX)
             interp_k = sc_k + fcc_k + bcc_k
@@ -790,15 +792,19 @@ if __name__ == '__main__':
 
             beta_space = sweep.beta.reshape(-1, sweep.beta.shape[-1])[0]  # assumes all configs. have the same beta range
             beta_range = np.max(beta_space) - np.min(beta_space)
-            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (int((1+2*extra_mult) * res * beta_space.size)-(res-1),), np.nan)
+            beta_step = beta_space[1] - beta_space[0]
+            # interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (int((1+2*extra_mult) * res * beta_space.size)-(res-1),), np.nan)
+            interp_beta_space = np.arange(np.min(beta_space) - extra_mult*beta_range, np.max(beta_space) + extra_mult*beta_range + beta_step/res, beta_step/res)
+            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + interp_beta_space.shape, np.nan)
 
             for config_idx in np.ndindex(interp_beta.shape[:-1]):
-                interp_beta[config_idx] = np.linspace(np.min(beta_space) - extra_mult*beta_range, np.max(beta_space) + extra_mult*beta_range, num=interp_beta.shape[-1])
+                # interp_beta[config_idx] = np.linspace(np.min(beta_space) - extra_mult*beta_range, np.max(beta_space) + extra_mult*beta_range, num=interp_beta.shape[-1])
+                interp_beta[config_idx] = np.copy(interp_beta_space)
             
             sweep.multi_hist_interp(interp_k, interp_beta)
 
         if args.multi_hist_plot:
-            sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-2], save=f'./{sweep.base_dir}/multi_hist_results_K5.npz')
+            sweep.multi_hist_obs_plot((0,)*13, FCC_IDX[-2], save=f'./{sweep.base_dir}/multi_hist_results.npz')
 
         if args.plot_beta_c:
             sweep.plot_beta_crit((0,)*13, FCC_IDX[-1])

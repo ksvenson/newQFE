@@ -453,44 +453,66 @@ class Sweep():
         for config_idx in np.ndindex(self.beta.shape[:-1]):
             print(config_idx)
             raw = da.from_array(self.get_raw(config_idx))
-            eng[config_idx] = -1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')]
-            beta_k[config_idx] = self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :]
+            eng[config_idx] = -1 * self.nx * self.ny * self.nz * raw[..., Sweep.get_idxes('energy')]  # Total energy along each direction, not yet multiplied by beta or couplings.
+            beta_k[config_idx] = self.beta[config_idx][:, np.newaxis] * np.array([self.k[dir][idx] for dir, idx in enumerate(config_idx)])[np.newaxis, :]  # Coupling vector multiplied by beta for each configuration.
             obs[config_idx] = raw[..., Sweep.plot_mask]
-
+        
+        # Merging all configurations into one index, keeping sample index and energy direction index.
         eng = eng.reshape(-1, eng.shape[-2], eng.shape[-1])
         beta_k = beta_k.reshape(-1, beta_k.shape[-1])
         obs = obs.reshape(-1, obs.shape[-2], obs.shape[-1])
+
+        # Making all observables positive so we can perform `logsumexp`.
         obs_offset = np.min(obs, axis=(0, 1)) - 1
         obs = np.log(obs - obs_offset)
 
+        # Starting a dask client.
+        # Kai Svenson Feb. 10, 2026:
+        # I experimented a lot with what calculations to do in dask, and which do implement with Python for loops.
+        # In the end, the code below is what I settled on because it doesn't run out of memory, at least on my machine.
+        # There is perhaps a better, faster implementation, but it'll take some tinkiner to find.
         client = Client(n_workers=1, threads_per_worker=2)
         print(f'Dashboard: {client.dashboard_link}')
         d_eng = da.array(eng)
         d_beta_k = da.array(beta_k)
-
+        # Computing Boltzmann weight: dot product between energy and coupling vector.
+        # `exponent.shape = (configurations tied to beta, configurations tied to energy, energy samples)`
         exponent = da.einsum('ij,klj->ikl', -1 * d_beta_k, d_eng)
+        # Loading the final output of `compute_partition`.
         log_Z = da.array(np.load(os.path.join(self.partition_dir, 'final_log_Z.npy')))
+        # The denominator of eq. 8.37 in Newman and Barkema, without the Boltzmann weight for the interpolated/extrapolated configuration.
+        # `denominator.shape = (configurations, samples)`
         denominator = (exponent - log_Z[:, np.newaxis, np.newaxis]).map_blocks(sp.special.logsumexp, axis=0, drop_axis=0) + np.log(self.n_samples)
+        # Last computation done in dask:
         denominator = denominator.compute()
         
         avg = np.full(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),), np.nan)
-        var = np.full(interp_beta.shape + (np.count_nonzero(Sweep.plot_mask),), np.nan)
+        var = np.full(avg.shape, np.nan)
+        reweighted_var = np.full(avg.shape, np.nan)
         for interp_config_idx in np.ndindex(interp_beta.shape):
             print(interp_config_idx)
             interp_beta_k = interp_beta[interp_config_idx] * np.array([interp_k[dir][idx] for dir, idx in enumerate(interp_config_idx[:-1])])
-            interp_exponent = np.einsum('i,kli->kl', -1 * interp_beta_k, eng)
+            interp_exponent = np.einsum('i,kli->kl', -1 * interp_beta_k, eng)  # Boltzmann weight for the interpolated/extrapolated configuration.
 
+            # Result of Newman and Barkema eq. 8.37.
+            # `interp_log_Z.shape = (1,)`
             interp_log_Z = sp.special.logsumexp(interp_exponent - denominator)
+            # Total reweighting factor for observables.
+            # `weight.shape = (configurations, samples)`
             weight = interp_exponent - (denominator + interp_log_Z)
+            # `obs.shape = (configurations, samples, observables)`
             avg[interp_config_idx] = sp.special.logsumexp(weight[..., np.newaxis] + obs, axis=(0,1))
             var[interp_config_idx] = sp.special.logsumexp(weight[..., np.newaxis] + 2*obs, axis=(0,1))
+            reweighted_var[interp_config_idx] = sp.special.logsumexp(2*weight[..., np.newaxis] + 2*obs, axis=(0,1))
         avg = np.exp(avg)
-        var = np.exp(var) - avg**2
+        total_N = denominator.size
+        reweighted_var = np.exp(var) - (total_N/(total_N-1))*avg**2 + (1/(total_N*(total_N-1))) * np.exp(reweighted_var)
+        var = (total_N/(total_N - 1)) * (np.exp(var) - avg**2)
         avg += obs_offset
         save_k = {}
         for i in range(len(interp_k)):
             save_k[f'k{i}'] = interp_k[i]
-        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var, **save_k)
+        np.savez(self.multi_hist_results, interp_beta=interp_beta, avg=avg, var=var, reweighted_var=reweighted_var, **save_k)
 
     def multi_hist_obs_plot(self, config_idx, free_idx, save=None):
         """
@@ -759,7 +781,7 @@ if __name__ == '__main__':
             fcc_k = [[1]] * (len(FCC_IDX) - 2)
 
             k_range = np.max(k_init) - np.min(k_init)
-            fcc_k.append(np.linspace(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_init))).round(2))
+            fcc_k.append(np.linspace(np.min(k_init) - extra_mult*k_range, np.max(k_init) + extra_mult*k_range, num=int((1+2*extra_mult)*res*len(k_init))-(res-1)))
             fcc_k.append([1])
 
             bcc_k = [[0]] * len(BCC_IDX)
@@ -768,7 +790,7 @@ if __name__ == '__main__':
 
             beta_space = sweep.beta.reshape(-1, sweep.beta.shape[-1])[0]  # assumes all configs. have the same beta range
             beta_range = np.max(beta_space) - np.min(beta_space)
-            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (int((1+2*extra_mult) * res * beta_space.size),), np.nan)
+            interp_beta = np.full(tuple(len(ki) for ki in interp_k) + (int((1+2*extra_mult) * res * beta_space.size)-(res-1),), np.nan)
 
             for config_idx in np.ndindex(interp_beta.shape[:-1]):
                 interp_beta[config_idx] = np.linspace(np.min(beta_space) - extra_mult*beta_range, np.max(beta_space) + extra_mult*beta_range, num=interp_beta.shape[-1])
